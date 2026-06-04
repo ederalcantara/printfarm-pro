@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Filamanager Pro - 3D Print Farm Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --accent: #06b6d4;
+            --dark: #0f172a;
+            --light: #f8fafc;
+        }
+        * { font-family: 'Inter', sans-serif; }
+        body { overflow-x: hidden; }
+
+        .hero {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #312e81 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(99,102,241,0.3) 0%, transparent 70%);
+            top: -200px;
+            right: -200px;
+            border-radius: 50%;
+        }
+        .hero::after {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(236,72,153,0.2) 0%, transparent 70%);
+            bottom: -100px;
+            left: -100px;
+            border-radius: 50%;
+        }
+        .hero-content { position: relative; z-index: 2; }
+        .hero h1 {
+            font-size: 4rem;
+            font-weight: 900;
+            color: white;
+            line-height: 1.1;
+        }
+        .hero h1 span {
+            background: linear-gradient(135deg, #6366f1, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero p {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            max-width: 600px;
+        }
+        .btn-hero {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            border: none;
+            transition: all 0.3s;
+            box-shadow: 0 10px 40px rgba(99,102,241,0.4);
+        }
+        .btn-hero:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 60px rgba(99,102,241,0.6);
+            color: white;
+        }
+        .btn-outline-hero {
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            transition: all 0.3s;
+            margin-left: 15px;
+        }
+        .btn-outline-hero:hover {
+            background: white;
+            color: var(--dark);
+        }
+
+        .floating-card {
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 30px;
+            color: white;
+        }
+        .floating-card i {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #6366f1, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--dark);
+        }
+        .section-subtitle {
+            color: #64748b;
+            font-size: 1.1rem;
+        }
+
+        .feature-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: all 0.3s;
+            height: 100%;
+            border: 1px solid #f1f5f9;
+        }
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+        }
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+        }
+
+        .pricing-card {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        .pricing-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+        .pricing-card.featured {
+            border: 2px solid var(--primary);
+            transform: scale(1.05);
+        }
+        .pricing-card.featured::before {
+            content: 'MOST POPULAR';
+            position: absolute;
+            top: 20px;
+            right: -35px;
+            background: linear-gradient(135deg, #6366f1, #ec4899);
+            color: white;
+            padding: 5px 40px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            transform: rotate(45deg);
+        }
+        .price-tag {
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--dark);
+            line-height: 1;
+        }
+        .price-tag .currency-brl {
+            display: block;
+        }
+        .price-tag .currency-usd {
+            display: none;
+            font-size: 1.5rem;
+            color: #64748b;
+            font-weight: 500;
+        }
+        .price-tag small {
+            font-size: 1rem;
+            color: #64748b;
+            font-weight: 400;
+        }
+        .price-toggle {
+            display: inline-flex;
+            background: #f1f5f9;
+            border-radius: 50px;
+            padding: 5px;
+            margin-bottom: 20px;
+        }
+        .price-toggle button {
+            border: none;
+            background: none;
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .price-toggle button.active {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            color: var(--primary);
+        }
+        .price-toggle button:not(.active) {
+            color: #64748b;
+        }
+
+        .stats-section {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            color: white;
+        }
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #6366f1, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .testimonial-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        .cta-section {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+        }
+
+        .footer {
+            background: #0f172a;
+            color: #94a3b8;
+        }
+
+        .lang-switch {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            padding: 8px 15px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .lang-switch a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 20px;
+            transition: all 0.3s;
+        }
+        .lang-switch a:hover, .lang-switch a.active {
+            background: rgba(255,255,255,0.2);
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .btn-outline-hero { margin-left: 0; margin-top: 10px; display: block; }
+            .pricing-card.featured { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Language Switcher -->
+    <div class="lang-switch">
+        <a href="#" class="active" onclick="setLang('pt'); return false;">🇧🇷 PT</a>
+        <a href="#" onclick="setLang('en'); return false;">🇺🇸 EN</a>
+    </div>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-7 hero-content">
+                    <div class="mb-3">
+                        <span class="badge bg-primary bg-opacity-25 text-primary px-3 py-2">
+                            <i class="bi bi-stars me-2"></i>v2.0 Now Available
+                        </span>
+                    </div>
+                    <h1 data-pt="Gerencie sua <span>Fazenda de Impressão 3D</span> como um Profissional" 
+                        data-en="Manage Your <span>3D Print Farm</span> Like a Pro">
+                        Gerencie sua <span>Fazenda de Impressão 3D</span> como um Profissional
+                    </h1>
+                    <p class="mt-4 mb-5" data-pt="O sistema completo bilíngue (PT/EN) com suporte a múltiplas moedas (R$ / $) para controle de máquinas, estoque, custos, pedidos e marketing digital."
+                       data-en="The complete bilingual system (PT/EN) with multi-currency support (R$ / $) for machine control, stock, costs, orders and digital marketing.">
+                        O sistema completo bilíngue (PT/EN) com suporte a múltiplas moedas (R$ / $) para controle de máquinas, estoque, custos, pedidos e marketing digital.
+                    </p>
+                    <div class="d-flex flex-wrap">
+                        <a href="#pricing" class="btn btn-hero">
+                            <i class="bi bi-rocket-takeoff me-2"></i>
+                            <span data-pt="Começar Agora" data-en="Get Started Now">Começar Agora</span>
+                        </a>
+                        <a href="#demo" class="btn btn-outline-hero">
+                            <i class="bi bi-play-circle me-2"></i>
+                            <span data-pt="Ver Demo" data-en="Watch Demo">Ver Demo</span>
+                        </a>
+                    </div>
+                    <div class="mt-5 d-flex gap-4">
+                        <div class="d-flex align-items-center gap-2 text-white-50">
+                            <i class="bi bi-check-circle-fill text-success"></i>
+                            <span data-pt="Setup em 5 min" data-en="5 min setup">Setup em 5 min</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 text-white-50">
+                            <i class="bi bi-check-circle-fill text-success"></i>
+                            <span data-pt="Hospedagem Grátis" data-en="Free Hosting">Hospedagem Grátis</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 text-white-50">
+                            <i class="bi bi-check-circle-fill text-success"></i>
+                            <span data-pt="Código Aberto" data-en="Open Source">Código Aberto</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-5 d-none d-lg-block">
+                    <div class="floating-card">
+                        <div class="d-flex align-items-center gap-3 mb-4">
+                            <div class="bg-primary bg-opacity-25 rounded-circle p-3">
+                                <i class="bi bi-printer-fill text-primary" style="font-size: 2rem;"></i>
+                            </div>
+                            <div>
+                                <div class="fw-bold">Ender 3 Pro</div>
+                                <div class="small text-success"><i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i> Imprimindo</div>
+                            </div>
+                            <div class="ms-auto text-end">
+                                <div class="fw-bold">45%</div>
+                                <div class="small text-muted">concluído</div>
+                            </div>
+                        </div>
+                        <div class="progress mb-4" style="height: 8px;">
+                            <div class="progress-bar bg-primary" style="width: 45%"></div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="bg-white bg-opacity-10 rounded p-2">
+                                    <div class="small text-muted">Tempo restante</div>
+                                    <div class="fw-bold">2h 15min</div>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="bg-white bg-opacity-10 rounded p-2">
+                                    <div class="small text-muted">Filamento</div>
+                                    <div class="fw-bold">PLA Rosa</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="stats-section py-5">
+        <div class="container">
+            <div class="row text-center g-4">
+                <div class="col-md-3">
+                    <div class="stat-number">500+</div>
+                    <div class="text-white-50" data-pt="Fazendas Ativas" data-en="Active Farms">Fazendas Ativas</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-number">50k+</div>
+                    <div class="text-white-50" data-pt="Pedidos Gerenciados" data-en="Orders Managed">Pedidos Gerenciados</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-number">99.9%</div>
+                    <div class="text-white-50" data-pt="Uptime" data-en="Uptime">Uptime</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-number">4.9★</div>
+                    <div class="text-white-50" data-pt="Avaliação Média" data-en="Average Rating">Avaliação Média</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="py-5 bg-light" id="features">
+        <div class="container py-5">
+            <div class="text-center mb-5">
+                <h2 class="section-title" data-pt="Tudo que você precisa em um só lugar" data-en="Everything you need in one place">Tudo que você precisa em um só lugar</h2>
+                <p class="section-subtitle" data-pt="De máquinas a marketing, gerencie toda a sua operação" data-en="From machines to marketing, manage your entire operation">De máquinas a marketing, gerencie toda a sua operação</p>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon bg-primary bg-opacity-10 text-primary">
+                            <i class="bi bi-cpu"></i>
+                        </div>
+                        <h4 data-pt="Máquinas" data-en="Machines">Máquinas</h4>
+                        <p class="text-muted" data-pt="Cadastre todas as suas impressoras 3D. Controle status, manutenção e horas de uso." data-en="Register all your 3D printers. Control status, maintenance and usage hours.">Cadastre todas as suas impressoras 3D. Controle status, manutenção e horas de uso.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon bg-success bg-opacity-10 text-success">
+                            <i class="bi bi-palette"></i>
+                        </div>
+                        <h4 data-pt="Estoque" data-en="Stock">Estoque</h4>
+                        <p class="text-muted" data-pt="Controle de filamentos com alerta automático quando o estoque está baixo." data-en="Filament control with automatic alert when stock is low.">Controle de filamentos com alerta automático quando o estoque está baixo.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon bg-warning bg-opacity-10 text-warning">
+                            <i class="bi bi-calculator"></i>
+                        </div>
+                        <h4 data-pt="Calculadora" data-en="Calculator">Calculadora</h4>
+                        <p class="text-muted" data-pt="Calcule custo real (energia, mão de obra, depreciação) + margem de lucro = preço de venda." data-en="Calculate real cost (energy, labor, depreciation) + profit margin = selling price.">Calcule custo real (energia, mão de obra, depreciação) + margem de lucro = preço de venda.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon bg-info bg-opacity-10 text-info">
+                            <i class="bi bi-box-seam"></i>
+                        </div>
+                        <h4 data-pt="Portfólio" data-en="Portfolio">Portfólio</h4>
+                        <p class="text-muted" data-pt="Catálogo de produtos com fotos, descrições, preços e configurações de impressão." data-en="Product catalog with photos, descriptions, prices and print settings.">Catálogo de produtos com fotos, descrições, preços e configurações de impressão.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon bg-danger bg-opacity-10 text-danger">
+                            <i class="bi bi-clipboard-check"></i>
+                        </div>
+                        <h4 data-pt="Pedidos" data-en="Orders">Pedidos</h4>
+                        <p class="text-muted" data-pt="Gestão completa de ordens de serviço com controle de status e lucratividade." data-en="Complete order management with status control and profitability.">Gestão completa de ordens de serviço com controle de status e lucratividade.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="feature-card">
+                        <div class="feature-icon bg-secondary bg-opacity-10 text-secondary">
+                            <i class="bi bi-megaphone"></i>
+                        </div>
+                        <h4 data-pt="Marketing" data-en="Marketing">Marketing</h4>
+                        <p class="text-muted" data-pt="Geração automática de posts para Instagram, Facebook e WhatsApp." data-en="Automatic post generation for Instagram, Facebook and WhatsApp.">Geração automática de posts para Instagram, Facebook e WhatsApp.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Bilingual Section -->
+    <section class="py-5">
+        <div class="container py-5">
+            <div class="row align-items-center g-5">
+                <div class="col-lg-6">
+                    <h2 class="section-title" data-pt="Bilíngue e Multi-Moeda" data-en="Bilingual & Multi-Currency">Bilíngue e Multi-Moeda</h2>
+                    <p class="section-subtitle mt-3" data-pt="Opere no Brasil ou internacionalmente. Alterne entre Português e Inglês, Real e Dólar instantaneamente."
+                       data-en="Operate in Brazil or internationally. Switch between Portuguese and English, Real and Dollar instantly.">
+                        Opere no Brasil ou internacionalmente. Alterne entre Português e Inglês, Real e Dólar instantaneamente.
+                    </p>
+                    <div class="row g-3 mt-3">
+                        <div class="col-6">
+                            <div class="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <span style="font-size: 2rem;">🇧🇷</span>
+                                <div>
+                                    <div class="fw-bold">Português</div>
+                                    <div class="small text-muted">PT-BR</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <span style="font-size: 2rem;">🇺🇸</span>
+                                <div>
+                                    <div class="fw-bold">English</div>
+                                    <div class="small text-muted">EN-US</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <span style="font-size: 2rem;">R$</span>
+                                <div>
+                                    <div class="fw-bold">Real</div>
+                                    <div class="small text-muted">BRL</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <span style="font-size: 2rem;">$</span>
+                                <div>
+                                    <div class="fw-bold">Dollar</div>
+                                    <div class="small text-muted">USD</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="bg-dark rounded-4 p-4" style="font-family: monospace;">
+                        <div class="d-flex gap-2 mb-3">
+                            <div class="bg-danger rounded-circle" style="width: 12px; height: 12px;"></div>
+                            <div class="bg-warning rounded-circle" style="width: 12px; height: 12px;"></div>
+                            <div class="bg-success rounded-circle" style="width: 12px; height: 12px;"></div>
+                        </div>
+                        <div class="text-success">$ <span class="text-white">filamanager --lang pt --currency BRL</span></div>
+                        <div class="text-muted mt-2">→ Iniciando Filamanager Pro v2.0...</div>
+                        <div class="text-muted">→ Idioma: Português</div>
+                        <div class="text-muted">→ Moeda: Real (R$)</div>
+                        <div class="text-muted">→ Banco de dados: Conectado</div>
+                        <div class="text-muted">→ Servidor: Online em :5000</div>
+                        <div class="text-primary mt-2">✓ Sistema pronto para uso!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="py-5 bg-light" id="pricing">
+        <div class="container py-5">
+            <div class="text-center mb-5">
+                <h2 class="section-title" data-pt="Escolha seu Plano" data-en="Choose Your Plan">Escolha seu Plano</h2>
+                <p class="section-subtitle" data-pt="Comece grátis e escale conforme cresce" data-en="Start free and scale as you grow">Comece grátis e escale conforme cresce</p>
+
+                <!-- Currency Toggle -->
+                <div class="price-toggle mt-4">
+                    <button class="active" onclick="setPriceCurrency('BRL')" id="btn-brl">🇧🇷 Real (R$)</button>
+                    <button onclick="setPriceCurrency('USD')" id="btn-usd">🇺🇸 Dollar ($)</button>
+                </div>
+            </div>
+            <div class="row g-4 justify-content-center">
+                <div class="col-md-4">
+                    <div class="pricing-card">
+                        <div class="text-center">
+                            <h4 class="fw-bold" data-pt="Iniciante" data-en="Starter">Iniciante</h4>
+                            <div class="price-tag mt-3">
+                                <span class="currency-brl">R$ 0 <small>/mês</small></span>
+                                <span class="currency-usd">$ 0 <small>/month</small></span>
+                            </div>
+                            <p class="text-muted mt-2" data-pt="Para quem está começando" data-en="For those starting out">Para quem está começando</p>
+                        </div>
+                        <hr class="my-4">
+                        <ul class="list-unstyled">
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="1 Usuário" data-en="1 User">1 Usuário</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="3 Máquinas" data-en="3 Machines">3 Máquinas</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Estoque básico" data-en="Basic stock">Estoque básico</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Calculadora" data-en="Calculator">Calculadora</span></li>
+                            <li class="mb-3 text-muted"><i class="bi bi-x-circle-fill me-2"></i> <span data-pt="Marketing" data-en="Marketing">Marketing</span></li>
+                            <li class="mb-3 text-muted"><i class="bi bi-x-circle-fill me-2"></i> <span data-pt="Relatórios" data-en="Reports">Relatórios</span></li>
+                        </ul>
+                        <a href="#" class="btn btn-outline-primary w-100 mt-3 rounded-pill">
+                            <span data-pt="Começar Grátis" data-en="Start Free">Começar Grátis</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="pricing-card featured">
+                        <div class="text-center">
+                            <h4 class="fw-bold" data-pt="Profissional" data-en="Professional">Profissional</h4>
+                            <div class="price-tag mt-3">
+                                <span class="currency-brl">R$ 49 <small>/mês</small></span>
+                                <span class="currency-usd">$ 9.99 <small>/month</small></span>
+                            </div>
+                            <p class="text-muted mt-2" data-pt="Para fazendas em crescimento" data-en="For growing farms">Para fazendas em crescimento</p>
+                        </div>
+                        <hr class="my-4">
+                        <ul class="list-unstyled">
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="5 Usuários" data-en="5 Users">5 Usuários</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Máquinas ilimitadas" data-en="Unlimited machines">Máquinas ilimitadas</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Estoque completo" data-en="Full stock">Estoque completo</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Calculadora avançada" data-en="Advanced calculator">Calculadora avançada</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Marketing Digital" data-en="Digital Marketing">Marketing Digital</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Relatórios" data-en="Reports">Relatórios</span></li>
+                        </ul>
+                        <a href="#" class="btn btn-primary w-100 mt-3 rounded-pill">
+                            <span data-pt="Assinar Agora" data-en="Subscribe Now">Assinar Agora</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="pricing-card">
+                        <div class="text-center">
+                            <h4 class="fw-bold" data-pt="Empresarial" data-en="Enterprise">Empresarial</h4>
+                            <div class="price-tag mt-3">
+                                <span class="currency-brl">R$ 199 <small>/mês</small></span>
+                                <span class="currency-usd">$ 39.99 <small>/month</small></span>
+                            </div>
+                            <p class="text-muted mt-2" data-pt="Para grandes operações" data-en="For large operations">Para grandes operações</p>
+                        </div>
+                        <hr class="my-4">
+                        <ul class="list-unstyled">
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Usuários ilimitados" data-en="Unlimited users">Usuários ilimitados</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Múltiplas unidades" data-en="Multiple locations">Múltiplas unidades</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="API completa" data-en="Full API">API completa</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Suporte prioritário" data-en="Priority support">Suporte prioritário</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="Customizações" data-en="Customizations">Customizações</span></li>
+                            <li class="mb-3"><i class="bi bi-check-circle-fill text-success me-2"></i> <span data-pt="White label" data-en="White label">White label</span></li>
+                        </ul>
+                        <a href="#" class="btn btn-outline-primary w-100 mt-3 rounded-pill">
+                            <span data-pt="Falar com Vendas" data-en="Contact Sales">Falar com Vendas</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="py-5">
+        <div class="container py-5">
+            <div class="text-center mb-5">
+                <h2 class="section-title" data-pt="O que dizem nossos clientes" data-en="What our customers say">O que dizem nossos clientes</h2>
+            </div>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="testimonial-card">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; font-weight: 700;">JS</div>
+                            <div>
+                                <div class="fw-bold">João Silva</div>
+                                <div class="small text-muted">Print3D Brasil</div>
+                            </div>
+                        </div>
+                        <p class="text-muted" data-pt="Consegui aumentar minha margem de lucro em 40% usando a calculadora de custo. Agora sei exatamente quanto cobrar em cada peça."
+                           data-en="I managed to increase my profit margin by 40% using the cost calculator. Now I know exactly how much to charge for each piece.">
+                            Consegui aumentar minha margem de lucro em 40% usando a calculadora de custo. Agora sei exatamente quanto cobrar em cada peça.
+                        </p>
+                        <div class="text-warning">
+                            <i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="testimonial-card">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; font-weight: 700;">MR</div>
+                            <div>
+                                <div class="fw-bold">Maria Rodriguez</div>
+                                <div class="small text-muted">MakerSpace MX</div>
+                            </div>
+                        </div>
+                        <p class="text-muted" data-pt="O sistema bilíngue me ajudou a atender clientes dos EUA e México no mesmo painel. Troco de moeda em um clique!"
+                           data-en="The bilingual system helped me serve customers from the US and Mexico on the same panel. I switch currency with one click!">
+                            O sistema bilíngue me ajudou a atender clientes dos EUA e México no mesmo painel. Troco de moeda em um clique!
+                        </p>
+                        <div class="text-warning">
+                            <i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="testimonial-card">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div class="bg-warning text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; font-weight: 700;">TK</div>
+                            <div>
+                                <div class="fw-bold">Tom Klein</div>
+                                <div class="small text-muted">3DPrint USA</div>
+                            </div>
+                        </div>
+                        <p class="text-muted" data-pt="A geração automática de posts para Instagram economiza 5 horas por semana. Meu marketing nunca foi tão fácil."
+                           data-en="The automatic post generation for Instagram saves 5 hours per week. My marketing has never been easier.">
+                            A geração automática de posts para Instagram economiza 5 horas por semana. Meu marketing nunca foi tão fácil.
+                        </p>
+                        <div class="text-warning">
+                            <i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section py-5">
+        <div class="container py-5 text-center">
+            <h2 class="display-4 fw-bold mb-4" data-pt="Pronto para escalar sua fazenda 3D?" data-en="Ready to scale your 3D farm?">Pronto para escalar sua fazenda 3D?</h2>
+            <p class="lead mb-5" data-pt="Comece gratuitamente hoje. Não precisa de cartão de crédito." data-en="Start free today. No credit card required.">Comece gratuitamente hoje. Não precisa de cartão de crédito.</p>
+            <a href="#pricing" class="btn btn-light btn-lg rounded-pill px-5 py-3 fw-bold" style="color: var(--primary);">
+                <i class="bi bi-rocket-takeoff me-2"></i>
+                <span data-pt="Criar Conta Grátis" data-en="Create Free Account">Criar Conta Grátis</span>
+            </a>
+            <p class="mt-3 small text-white-50" data-pt="Deploy em 5 minutos • Código aberto • Hospedagem grátis" data-en="Deploy in 5 minutes • Open source • Free hosting">Deploy em 5 minutos • Código aberto • Hospedagem grátis</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer py-5">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-lg-4">
+                    <h4 class="text-white fw-bold mb-3"><i class="bi bi-printer-fill me-2"></i>Filamanager Pro</h4>
+                    <p class="text-white-50" data-pt="O sistema completo para gestão de fazendas de impressão 3D. Bilíngue, multi-moeda e pronto para comercializar."
+                       data-en="The complete system for managing 3D print farms. Bilingual, multi-currency and ready to commercialize.">
+                        O sistema completo para gestão de fazendas de impressão 3D. Bilíngue, multi-moeda e pronto para comercializar.
+                    </p>
+                </div>
+                <div class="col-lg-2">
+                    <h6 class="text-white fw-bold mb-3">Product</h6>
+                    <ul class="list-unstyled">
+                        <li><a href="#features" class="text-white-50 text-decoration-none">Features</a></li>
+                        <li><a href="#pricing" class="text-white-50 text-decoration-none">Pricing</a></li>
+                        <li><a href="#" class="text-white-50 text-decoration-none">Demo</a></li>
+                    </ul>
+                </div>
+                <div class="col-lg-2">
+                    <h6 class="text-white fw-bold mb-3">Resources</h6>
+                    <ul class="list-unstyled">
+                        <li><a href="#" class="text-white-50 text-decoration-none">Documentation</a></li>
+                        <li><a href="#" class="text-white-50 text-decoration-none">GitHub</a></li>
+                        <li><a href="#" class="text-white-50 text-decoration-none">Support</a></li>
+                    </ul>
+                </div>
+                <div class="col-lg-2">
+                    <h6 class="text-white fw-bold mb-3">Company</h6>
+                    <ul class="list-unstyled">
+                        <li><a href="#" class="text-white-50 text-decoration-none">About</a></li>
+                        <li><a href="#" class="text-white-50 text-decoration-none">Contact</a></li>
+                        <li><a href="#" class="text-white-50 text-decoration-none">Blog</a></li>
+                    </ul>
+                </div>
+                <div class="col-lg-2">
+                    <h6 class="text-white fw-bold mb-3">Legal</h6>
+                    <ul class="list-unstyled">
+                        <li><a href="#" class="text-white-50 text-decoration-none">Privacy</a></li>
+                        <li><a href="#" class="text-white-50 text-decoration-none">Terms</a></li>
+                        <li><a href="#" class="text-white-50 text-decoration-none">License</a></li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="border-secondary my-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-white-50 small">© 2026 Filamanager Pro. All rights reserved.</div>
+                <div class="d-flex gap-3">
+                    <a href="#" class="text-white-50"><i class="bi bi-instagram"></i></a>
+                    <a href="#" class="text-white-50"><i class="bi bi-facebook"></i></a>
+                    <a href="#" class="text-white-50"><i class="bi bi-twitter-x"></i></a>
+                    <a href="#" class="text-white-50"><i class="bi bi-github"></i></a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Language switcher
+        function setLang(lang) {
+            document.querySelectorAll('[data-pt][data-en]').forEach(el => {
+                el.textContent = el.getAttribute('data-' + lang);
+            });
+            document.querySelectorAll('.lang-switch a').forEach(a => a.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        // Currency switcher for prices
+        function setPriceCurrency(currency) {
+            const brlElements = document.querySelectorAll('.currency-brl');
+            const usdElements = document.querySelectorAll('.currency-usd');
+            const btnBrl = document.getElementById('btn-brl');
+            const btnUsd = document.getElementById('btn-usd');
+
+            if (currency === 'USD') {
+                brlElements.forEach(el => el.style.display = 'none');
+                usdElements.forEach(el => el.style.display = 'block');
+                btnUsd.classList.add('active');
+                btnBrl.classList.remove('active');
+            } else {
+                brlElements.forEach(el => el.style.display = 'block');
+                usdElements.forEach(el => el.style.display = 'none');
+                btnBrl.classList.add('active');
+                btnUsd.classList.remove('active');
+            }
+        }
+    </script>
+</body>
+</html>
