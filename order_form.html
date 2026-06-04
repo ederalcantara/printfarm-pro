@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Novo Pedido - PrintFarm Pro{% endblock %}
+{% block content %}
+<div class="topbar">
+    <h4 class="mb-0 fw-bold">Novo Pedido</h4>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="table-card p-4">
+            <form method="POST">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Produto *</label>
+                        <select name="product_id" class="form-select" required>
+                            <option value="">Selecione...</option>
+                            {% for p in products %}
+                            <option value="{{ p.id }}">{{ p.name }} - R$ {{ "%.2f"|format(p.suggested_price or 0) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Cliente</label>
+                        <select name="customer_id" class="form-select">
+                            <option value="">Novo cliente...</option>
+                            {% for c in customers %}
+                            <option value="{{ c.id }}">{{ c.name }} - {{ c.phone or 'Sem telefone' }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nome do Cliente</label>
+                        <input type="text" name="customer_name" class="form-control" placeholder="Ou digite o nome aqui">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="customer_email" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Telefone</label>
+                        <input type="text" name="customer_phone" class="form-control">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Máquina *</label>
+                        <select name="machine_id" class="form-select" required>
+                            <option value="">Selecione...</option>
+                            {% for m in machines %}
+                            <option value="{{ m.id }}">{{ m.name }} - {{ m.brand }} {{ m.model }} ({{ 'Livre' if m.status == 'idle' else 'Ocupada' }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Filamento *</label>
+                        <select name="filament_id" class="form-select" required>
+                            <option value="">Selecione...</option>
+                            {% for f in filaments %}
+                            <option value="{{ f.id }}">{{ f.name }} - {{ f.material }} {{ f.color }} ({{ "%.2f"|format(f.weight_remaining_kg) }}kg restante)</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Quantidade</label>
+                        <input type="number" name="quantity" class="form-control" value="1" min="1">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Prioridade</label>
+                        <select name="priority" class="form-select">
+                            <option value="normal" selected>Normal</option>
+                            <option value="high">Alta</option>
+                            <option value="low">Baixa</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Status</label>
+                        <select name="status" class="form-select">
+                            <option value="pending" selected>Pendente</option>
+                            <option value="printing">Imprimindo</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Preço Cobrado (R$) *</label>
+                        <input type="number" step="0.01" name="price_charged" class="form-control" required>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Observações</label>
+                        <textarea name="notes" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>Criar Pedido
+                        </button>
+                        <a href="{{ url_for('orders') }}" class="btn btn-outline-secondary">Cancelar</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Máquinas - PrintFarm Pro{% endblock %}
+{% block content %}
+<div class="topbar">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-cpu me-2"></i>Máquinas (Impressoras)</h4>
+    </div>
+    <a href="{{ url_for('add_machine') }}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i>Nova Máquina
+    </a>
+</div>
+
+<div class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Nome</th>
+                    <th>Marca/Modelo</th>
+                    <th>Status</th>
+                    <th>Mesa</th>
+                    <th>Bico</th>
+                    <th>Horas</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in machines %}
+                <tr>
+                    <td class="fw-semibold">{{ m.name }}</td>
+                    <td>{{ m.brand }} {{ m.model }}</td>
+                    <td>
+                        <span class="status-badge status-{{ m.status }}">
+                            {{ 'Livre' if m.status == 'idle' else 'Imprimindo' if m.status == 'printing' else 'Manutenção' }}
+                        </span>
+                    </td>
+                    <td>{{ m.bed_size_x }}x{{ m.bed_size_y }}x{{ m.bed_size_z }}mm</td>
+                    <td>{{ m.nozzle_diameter }}mm</td>
+                    <td>{{ "%.1f"|format(m.hours_used) }}h</td>
+                    <td>
+                        <a href="{{ url_for('edit_machine', id=m.id) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <a href="{{ url_for('delete_machine', id=m.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Remover esta máquina?')">
+                            <i class="bi bi-trash"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - PrintFarm Pro{% endblock %}
+{% block content %}
+<div class="topbar">
+    <div>
+        <h4 class="mb-0 fw-bold">Dashboard</h4>
+        <small class="text-muted">Visão geral da sua fazenda de impressão 3D</small>
+    </div>
+    <div class="text-end">
+        <span class="badge bg-primary"><i class="bi bi-person me-1"></i>{{ session.username }}</span>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card-stats">
+            <div class="icon bg-primary bg-opacity-10 text-primary">
+                <i class="bi bi-cpu"></i>
+            </div>
+            <div class="value">{{ stats.total_machines }}</div>
+            <div class="label">Total de Máquinas</div>
+            <small class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i> {{ stats.active_machines }} imprimindo</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card-stats">
+            <div class="icon bg-success bg-opacity-10 text-success">
+                <i class="bi bi-palette"></i>
+            </div>
+            <div class="value">{{ stats.total_filaments }}</div>
+            <div class="label">Filamentos no Estoque</div>
+            {% if stats.low_stock > 0 %}
+            <small class="text-danger"><i class="bi bi-exclamation-triangle"></i> {{ stats.low_stock }} em falta</small>
+            {% else %}
+            <small class="text-success"><i class="bi bi-check-circle"></i> Estoque OK</small>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card-stats">
+            <div class="icon bg-warning bg-opacity-10 text-warning">
+                <i class="bi bi-clipboard-check"></i>
+            </div>
+            <div class="value">{{ stats.pending_orders }}</div>
+            <div class="label">Pedidos Pendentes</div>
+            <small class="text-muted">de {{ stats.total_orders }} total</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card-stats">
+            <div class="icon bg-info bg-opacity-10 text-info">
+                <i class="bi bi-currency-dollar"></i>
+            </div>
+            <div class="value">R$ {{ "%.2f"|format(stats.month_revenue) }}</div>
+            <div class="label">Receita do Mês</div>
+            <small class="text-muted">{{ stats.total_customers }} clientes</small>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Máquinas Ativas -->
+    <div class="col-lg-6">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-cpu me-2"></i>Máquinas</span>
+                <a href="{{ url_for('machines') }}" class="btn btn-sm btn-primary">Ver todas</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nome</th>
+                            <th>Marca/Modelo</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in machines %}
+                        <tr>
+                            <td class="fw-semibold">{{ m.name }}</td>
+                            <td>{{ m.brand }} {{ m.model }}</td>
+                            <td>
+                                <span class="status-badge status-{{ m.status }}">
+                                    {{ 'Imprimindo' if m.status == 'printing' else 'Livre' if m.status == 'idle' else 'Manutenção' }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pedidos Recentes -->
+    <div class="col-lg-6">
+        <div class="table-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-clock-history me-2"></i>Pedidos Recentes</span>
+                <a href="{{ url_for('orders') }}" class="btn btn-sm btn-primary">Ver todos</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Pedido</th>
+                            <th>Produto</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in recent_orders %}
+                        <tr>
+                            <td class="fw-semibold">{{ o.order_number }}</td>
+                            <td>{{ o.product_name or 'Personalizado' }}</td>
+                            <td>
+                                <span class="status-badge status-{{ o.status }}">
+                                    {{ 'Pendente' if o.status == 'pending' else 'Imprimindo' if o.status == 'printing' else 'Concluído' if o.status == 'completed' else 'Cancelado' }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estoque Baixo -->
+    {% if low_stock %}
+    <div class="col-12">
+        <div class="table-card border-danger">
+            <div class="card-header bg-danger bg-opacity-10 text-danger">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>Filamentos com Estoque Baixo
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nome</th>
+                            <th>Material</th>
+                            <th>Cor</th>
+                            <th>Restante</th>
+                            <th>Mínimo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in low_stock %}
+                        <tr>
+                            <td class="fw-semibold">{{ f.name }}</td>
+                            <td>{{ f.material }}</td>
+                            <td>
+                                <span class="filament-color-dot" style="background-color: {{ f.color_hex }};"></span>
+                                {{ f.color }}
+                            </td>
+                            <td class="text-danger fw-bold">{{ "%.2f"|format(f.weight_remaining_kg) }} kg</td>
+                            <td>{{ "%.2f"|format(f.min_stock) }} kg</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

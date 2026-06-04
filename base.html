@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="{{ get_lang() }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Filamanager Pro{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --dark: #1e293b;
+            --light: #f8fafc;
+            --sidebar-width: 260px;
+        }
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #f1f5f9; }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: all 0.3s;
+        }
+        .sidebar-brand {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .sidebar-brand h4 {
+            color: white;
+            margin: 0;
+            font-weight: 700;
+        }
+        .sidebar-brand small {
+            color: #94a3b8;
+            font-size: 0.75rem;
+        }
+        .nav-link {
+            color: #94a3b8;
+            padding: 12px 20px;
+            border-radius: 0;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: white;
+            background: rgba(99, 102, 241, 0.15);
+            border-left: 3px solid var(--primary);
+        }
+        .nav-link i { font-size: 1.1rem; }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .topbar {
+            background: white;
+            border-radius: 12px;
+            padding: 15px 25px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .card-stats {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            border: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+        .card-stats:hover { transform: translateY(-2px); }
+        .card-stats .icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 12px;
+        }
+        .card-stats .value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--dark);
+        }
+        .card-stats .label {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            border-color: var(--primary-dark);
+        }
+
+        .table-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .table-card .card-header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 15px 20px;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .status-idle { background: #e0f2fe; color: #0369a1; }
+        .status-printing { background: #dcfce7; color: #166534; }
+        .status-maintenance { background: #fef3c7; color: #92400e; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-completed { background: #dcfce7; color: #166534; }
+        .status-cancelled { background: #fee2e2; color: #991b1b; }
+        .status-available { background: #dcfce7; color: #166534; }
+        .status-low { background: #fee2e2; color: #991b1b; }
+
+        .form-control, .form-select {
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            padding: 10px 14px;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .login-page {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1e293b 0%, #4f46e5 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+
+        .calculator-result {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-radius: 12px;
+            padding: 25px;
+            border: 1px solid #bae6fd;
+        }
+        .price-highlight {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .filament-color-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 2px solid #e2e8f0;
+        }
+
+        .lang-switcher {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .lang-switcher a {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .lang-switcher a.active {
+            background: var(--primary);
+            color: white;
+        }
+        .lang-switcher a:not(.active) {
+            color: #64748b;
+            background: #f1f5f9;
+        }
+
+        .currency-switcher {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .currency-switcher a {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .currency-switcher a.active {
+            background: var(--success);
+            color: white;
+        }
+        .currency-switcher a:not(.active) {
+            color: #64748b;
+            background: #f1f5f9;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.show { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if session.get('user_id') %}
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <h4><i class="bi bi-printer-fill me-2"></i>Filamanager</h4>
+            <small>Pro v2.0</small>
+        </div>
+        <div class="nav flex-column">
+            <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                <i class="bi bi-speedometer2"></i> {{ t('dashboard') }}
+            </a>
+            <a href="{{ url_for('machines') }}" class="nav-link {% if request.endpoint in ['machines', 'add_machine', 'edit_machine'] %}active{% endif %}">
+                <i class="bi bi-cpu"></i> {{ t('machines') }}
+            </a>
+            <a href="{{ url_for('filaments') }}" class="nav-link {% if request.endpoint in ['filaments', 'add_filament', 'edit_filament'] %}active{% endif %}">
+                <i class="bi bi-palette"></i> {{ t('filaments') }}
+            </a>
+            <a href="{{ url_for('calculator') }}" class="nav-link {% if request.endpoint in ['calculator', 'calculator_settings'] %}active{% endif %}">
+                <i class="bi bi-calculator"></i> {{ t('calculator') }}
+            </a>
+            <a href="{{ url_for('products') }}" class="nav-link {% if request.endpoint in ['products', 'add_product', 'edit_product'] %}active{% endif %}">
+                <i class="bi bi-box-seam"></i> {{ t('products') }}
+            </a>
+            <a href="{{ url_for('orders') }}" class="nav-link {% if request.endpoint in ['orders', 'add_order'] %}active{% endif %}">
+                <i class="bi bi-clipboard-check"></i> {{ t('orders') }}
+            </a>
+            <a href="{{ url_for('customers') }}" class="nav-link {% if request.endpoint in ['customers', 'add_customer'] %}active{% endif %}">
+                <i class="bi bi-people"></i> {{ t('customers') }}
+            </a>
+            <a href="{{ url_for('marketing') }}" class="nav-link {% if request.endpoint in ['marketing', 'generate_marketing'] %}active{% endif %}">
+                <i class="bi bi-megaphone"></i> {{ t('marketing') }}
+            </a>
+            <a href="{{ url_for('reports') }}" class="nav-link {% if request.endpoint == 'reports' %}active{% endif %}">
+                <i class="bi bi-graph-up"></i> {{ t('reports') }}
+            </a>
+            <div class="mt-auto pt-3 border-top border-secondary">
+                <a href="{{ url_for('logout') }}" class="nav-link text-danger">
+                    <i class="bi bi-box-arrow-right"></i> {{ t('logout') }}
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Top Bar with Language & Currency -->
+        <div class="topbar">
+            <div>
+                <h4 class="mb-0 fw-bold">{% block page_title %}{% endblock %}</h4>
+            </div>
+            <div class="d-flex gap-3 align-items-center">
+                <!-- Language Switcher -->
+                <div class="lang-switcher">
+                    <a href="{{ url_for('set_lang', lang='pt') }}" class="{% if get_lang() == 'pt' %}active{% endif %}">🇧🇷 PT</a>
+                    <a href="{{ url_for('set_lang', lang='en') }}" class="{% if get_lang() == 'en' %}active{% endif %}">🇺🇸 EN</a>
+                </div>
+                <!-- Currency Switcher -->
+                <div class="currency-switcher">
+                    <a href="{{ url_for('set_currency', currency='BRL') }}" class="{% if get_currency() == 'BRL' %}active{% endif %}">R$</a>
+                    <a href="{{ url_for('set_currency', currency='USD') }}" class="{% if get_currency() == 'USD' %}active{% endif %}">$</a>
+                </div>
+                <span class="badge bg-primary"><i class="bi bi-person me-1"></i>{{ session.username }}</span>
+            </div>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+    {% else %}
+        {% block content %}{% endblock %}
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
