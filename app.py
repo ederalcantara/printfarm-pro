@@ -12,6 +12,7 @@ import sqlite3
 import os
 from datetime import datetime
 import random
+import threading
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'filamanager-secret-key-2026')
@@ -20,6 +21,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 DATABASE = 'database.db'
 _db_initialized = False
+_db_lock = threading.Lock()
 DEFAULT_LANG = 'pt'
 DEFAULT_CURRENCY = 'BRL'
 USD_TO_BRL = 5.0  # Taxa de conversão - ajuste conforme mercado
@@ -227,7 +229,7 @@ def convert_to_brl(value):
 app.jinja_env.globals.update(t=t, format_currency=format_currency, get_lang=get_lang, get_currency=get_currency)
 
 def get_db():
-    conn = sqlite3.connect(DATABASE)
+    conn = sqlite3.connect(DATABASE, timeout=20)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -427,7 +429,7 @@ def init_db():
     cursor.execute('INSERT OR IGNORE INTO users (id, username, password, email, full_name, role) VALUES (1, ?, ?, ?, ?, ?)',
                    ('admin', generate_password_hash('admin123'), 'admin@filamanager.com', 'Administrator', 'admin'))
 
-    cursor.execute('INSERT OR IGNORE INTO cost_settings (id) VALUES (1')
+    cursor.execute('INSERT OR IGNORE INTO cost_settings (id) VALUES (1)')
 
     conn.commit()
     conn.close()
@@ -465,8 +467,10 @@ def admin_required(f):
 def ensure_db():
     global _db_initialized
     if not _db_initialized:
-        init_db()
-        _db_initialized = True
+        with _db_lock:
+            if not _db_initialized:
+                init_db()
+                _db_initialized = True
 
 # ============================================================
 # LANGUAGE & CURRENCY SWITCHER
