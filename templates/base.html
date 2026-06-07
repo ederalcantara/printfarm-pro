@@ -289,7 +289,7 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="main-content">
+    <main class="{% if session.get('user_id') %}main-content{% else %}main-content-full{% endif %}">
         <!-- Top Bar with Language & Currency -->
         <div class="topbar">
             <div>
