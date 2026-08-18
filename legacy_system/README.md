@@ -1,43 +1,68 @@
 # Sistema Legacy v1
 
-Nova base do Sistema Legacy, construída separadamente do sistema antigo.
+Nova aplicação de gestão para a operação de impressão 3D Legacy, construída separadamente do Filamanager antigo.
 
-## Fluxo principal de orçamento e produção
+## O que já está implementado
 
-1. `draft` — orçamento em montagem.
-2. `awaiting_customer_approval` — enviado ao cliente, aguardando aprovação.
-3. `approved_for_execution` — aprovado pelo cliente e liberado para preparação técnica.
-4. `preparing` — ajustes de tamanho, orientação, suporte, fatiamento e parâmetros.
-5. `printing` — entrou na fila/impressão. **Neste ponto o estoque é baixado automaticamente uma única vez.**
-6. `completed` — impressão concluída.
-7. `delivered` — entregue ao cliente.
-8. `cancelled` — cancelado.
+- Login administrativo.
+- Dashboard operacional.
+- Cadastro e histórico de clientes.
+- Estoque de filamentos em gramas, custo por kg, estoque mínimo e movimentações.
+- Cadastro de máquinas.
+- Projetos de clientes e Projetos Legacy (produtos próprios da equipe).
+- Arquivos STL/3MF/OBJ, imagens e G-code associados ao projeto, com versão e SHA-256.
+- Orçamentos em USD ou BRL.
+- Itens de orçamento com tamanho X/Y/Z, layer, infill, peso estimado, tempo, máquina e filamento.
+- Fluxo: Rascunho → Aguardando aprovação → Execução → Preparação → Imprimindo → Concluído → Entregue.
+- Baixa automática do filamento somente ao entrar em `printing`.
+- Proteção contra baixa duplicada.
+- Bloqueio de impressão quando o estoque não é suficiente.
+- Registro do peso real ao final e ajuste da diferença no estoque.
+- Fila/Kanban de produção.
+- Projetos Legacy transformáveis em produtos de catálogo.
+- Estoque separado de produtos acabados para venda.
+- Campos de legenda para Instagram e Facebook.
+- Layout responsivo para celular e computador.
+- PostgreSQL via `DATABASE_URL`.
+- Blueprint do Render em `legacy_system/render.yaml`.
 
-## Regra de estoque
+## Arquivos STL
 
-O orçamento não reduz estoque. A baixa acontece somente na primeira transição para `printing`.
+Os metadados ficam no PostgreSQL. Para guardar o arquivo real de forma persistente em produção, configure um armazenamento S3 compatível usando:
 
-A movimentação é idempotente: se o status for salvo novamente como `printing`, o estoque não é descontado uma segunda vez.
+- `S3_ENDPOINT_URL`
+- `S3_ACCESS_KEY_ID`
+- `S3_SECRET_ACCESS_KEY`
+- `S3_BUCKET`
+- `S3_REGION` (opcional)
+- `S3_PUBLIC_BASE_URL` (opcional)
 
-Para cada item de produção guardamos:
-- consumo estimado em gramas;
-- consumo efetivamente baixado;
-- data da baixa;
-- histórico da movimentação.
+Sem essas variáveis, o sistema registra o nome, tamanho e checksum do arquivo, mas não conserva os bytes do upload.
 
-Na conclusão, uma versão futura poderá ajustar diferença entre peso estimado e peso real.
+## Login inicial
 
-## Módulos da primeira fase
+Por padrão, se as variáveis não forem definidas:
 
-- clientes;
-- materiais/filamentos;
-- orçamentos;
-- itens do orçamento;
-- fluxo de aprovação/produção;
-- baixa automática de estoque;
-- histórico de estoque;
-- BRL/USD por orçamento.
+- usuário: `admin`
+- senha: `admin123`
 
-## Banco
+Em produção, configure `LEGACY_ADMIN_USER` e `LEGACY_ADMIN_PASSWORD` antes do primeiro acesso.
 
-PostgreSQL via `DATABASE_URL`.
+## Execução local
+
+```bash
+cd legacy_system
+pip install -r requirements.txt
+export DATABASE_URL='postgresql://...'
+python app.py
+```
+
+## Deploy
+
+O serviço deve iniciar com:
+
+```bash
+gunicorn app:app
+```
+
+Root directory: `legacy_system`.
