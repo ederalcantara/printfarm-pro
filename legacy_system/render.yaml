@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: sistema-legacy
+    runtime: python
+    plan: free
+    rootDir: legacy_system
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: SECRET_KEY
+        generateValue: true
+      - key: LEGACY_ADMIN_USER
+        value: admin
+      - key: LEGACY_ADMIN_PASSWORD
+        generateValue: true
+
+databases:
+  - name: sistema-legacy-db
+    plan: free
+    databaseName: legacy
+    user: legacy
