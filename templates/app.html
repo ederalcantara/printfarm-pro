@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sistema Legacy</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root{--ink:#0d1117;--muted:#667085;--accent:#6d28d9;--panel:#fff;--bg:#f5f6f8}
+    body{background:var(--bg);color:var(--ink);font-size:14px}
+    .sidebar{width:250px;position:fixed;inset:0 auto 0 0;background:#0e1116;color:#fff;padding:24px 16px;overflow-y:auto}
+    .brand{font-size:22px;font-weight:800;padding:0 12px 22px}.brand span{color:#9b7cff}
+    .nav-link{color:#aeb6c2;border-radius:10px;padding:10px 12px;margin:3px 0}.nav-link:hover,.nav-link.active{background:#232832;color:#fff}
+    .main{margin-left:250px;min-height:100vh}.topbar{height:72px;background:#fff;border-bottom:1px solid #e7e9ee;display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:20}
+    .content{padding:28px}.card{border:1px solid #e6e8ed;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+    .stat{padding:20px}.stat .n{font-size:30px;font-weight:800}.stat .k{color:var(--muted)}
+    .section-title{font-size:24px;font-weight:800;margin-bottom:18px}.form-label{font-weight:600}
+    .table> :not(caption)>*>*{padding:.8rem .65rem;vertical-align:middle}.badge-soft{background:#f1edff;color:#5b21b6}
+    .low{background:#fff1f2}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    @media(max-width:900px){.sidebar{position:static;width:100%;height:auto}.main{margin-left:0}.topbar{position:static}.content{padding:16px}.sidebar .nav{display:grid;grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand">Sistema <span>Legacy</span></div>
+  {% set nav=[('dashboard','Dashboard'),('customers','Clientes'),('stock','Estoque'),('quotes','Orçamentos'),('projects','Projetos'),('machines','Máquinas'),('catalog','Catálogo')] %}
+  <nav class="nav flex-column">
+    {% for key,label in nav %}<a class="nav-link {% if tab==key %}active{% endif %}" href="{{url_for('dashboard',tab=key)}}">{{label}}</a>{% endfor %}
+    <a class="nav-link" href="{{url_for('public_catalog')}}" target="_blank">Catálogo público ↗</a>
+  </nav>
+</aside>
+<div class="main">
+  <header class="topbar"><div><strong>Legacy 3D Studio</strong><div class="text-secondary small">Produção e gestão</div></div><div>{{session.get('full_name')}} · <a href="{{url_for('logout')}}">Sair</a></div></header>
+  <main class="content">
+    {% with messages=get_flashed_messages(with_categories=true) %}{% for category,msg in messages %}<div class="alert alert-{{category}} alert-dismissible fade show">{{msg}}<button class="btn-close" data-bs-dismiss="alert"></button></div>{% endfor %}{% endwith %}
+
+    {% if tab=='dashboard' %}
+      <div class="section-title">Dashboard</div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="card stat"><div class="k">Clientes</div><div class="n">{{customer_count}}</div></div></div>
+        <div class="col-md-3"><div class="card stat"><div class="k">Trabalhos abertos</div><div class="n">{{open_quotes}}</div></div></div>
+        <div class="col-md-3"><div class="card stat"><div class="k">Imprimindo agora</div><div class="n">{{printing_count}}</div></div></div>
+        <div class="col-md-3"><div class="card stat"><div class="k">Estoque baixo</div><div class="n">{{low_stock_count}}</div></div></div>
+      </div>
+      <div class="card p-4">
+        <h5>Fluxo de produção</h5>
+        <p class="text-secondary mb-2">Orçamento → Aguardando aprovação → Aprovado → Execução → <strong>Impressão</strong> → Concluído → Entregue.</p>
+        <p class="mb-0">A baixa do filamento acontece automaticamente apenas quando o trabalho entra em <strong>Imprimindo</strong>. Ao concluir, você pode informar o consumo real e o sistema ajusta a diferença.</p>
+      </div>
+    {% endif %}
+
+    {% if tab=='customers' %}
+      <div class="section-title">Clientes</div>
+      <div class="row g-4">
+        <div class="col-lg-4"><div class="card p-4"><h5>Novo cliente</h5><form method="post" action="{{url_for('add_customer')}}">
+          <div class="mb-2"><label class="form-label">Nome</label><input class="form-control" name="name" required></div>
+          <div class="mb-2"><label class="form-label">Telefone</label><input class="form-control" name="phone"></div>
+          <div class="mb-2"><label class="form-label">E-mail</label><input class="form-control" name="email" type="email"></div>
+          <div class="mb-2"><label class="form-label">Endereço</label><textarea class="form-control" name="address" rows="2"></textarea></div>
+          <div class="mb-3"><label class="form-label">Observações</label><textarea class="form-control" name="notes" rows="2"></textarea></div>
+          <button class="btn btn-dark w-100">Cadastrar cliente</button>
+        </form></div></div>
+        <div class="col-lg-8"><div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Cliente</th><th>Contato</th><th>Observações</th></tr></thead><tbody>
+          {% for c in customers %}<tr><td><strong>{{c.name}}</strong><div class="small text-secondary">{{c.email or ''}}</div></td><td>{{c.phone or '—'}}</td><td>{{c.notes or '—'}}</td></tr>{% else %}<tr><td colspan="3" class="text-secondary">Nenhum cliente cadastrado.</td></tr>{% endfor %}
+        </tbody></table></div></div></div>
+      </div>
+    {% endif %}
+
+    {% if tab=='stock' %}
+      <div class="section-title">Estoque de filamentos</div>
+      <div class="row g-4 mb-4">
+        <div class="col-lg-4"><div class="card p-4"><h5>Adicionar filamento</h5><form method="post" action="{{url_for('add_filament')}}">
+          <div class="row g-2"><div class="col-6"><label class="form-label">Material</label><input class="form-control" name="material" placeholder="PLA" required></div><div class="col-6"><label class="form-label">Cor</label><input class="form-control" name="color" required></div></div>
+          <div class="row g-2 mt-1"><div class="col-6"><label class="form-label">Marca</label><input class="form-control" name="brand"></div><div class="col-6"><label class="form-label">Estoque (g)</label><input class="form-control" name="remaining_g" type="number" step="0.01" min="0" required></div></div>
+          <div class="row g-2 mt-1"><div class="col-6"><label class="form-label">Peso rolo (g)</label><input class="form-control" name="spool_weight_g" type="number" value="1000"></div><div class="col-6"><label class="form-label">Mínimo (g)</label><input class="form-control" name="min_g" type="number" value="100"></div></div>
+          <div class="row g-2 mt-1"><div class="col-7"><label class="form-label">Custo</label><input class="form-control" name="purchase_cost" type="number" step="0.01"></div><div class="col-5"><label class="form-label">Moeda</label><select class="form-select" name="currency"><option>USD</option><option>BRL</option></select></div></div>
+          <div class="mt-2"><label class="form-label">Fornecedor</label><input class="form-control" name="supplier"></div><div class="mt-2 mb-3"><label class="form-label">Localização</label><input class="form-control" name="location"></div>
+          <button class="btn btn-dark w-100">Adicionar ao estoque</button>
+        </form></div></div>
+        <div class="col-lg-8"><div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Filamento</th><th>Restante</th><th>Custo</th><th>Ajustar</th></tr></thead><tbody>
+          {% for f in filaments %}<tr class="{% if f.remaining_g <= f.min_g %}low{% endif %}"><td><strong>{{f.material}} · {{f.color}}</strong><div class="small text-secondary">{{f.brand or ''}} {{f.location or ''}}</div></td><td><strong>{{'%.1f'|format(f.remaining_g)}} g</strong><div class="small text-secondary">mín. {{f.min_g}} g</div></td><td>{{money(f.purchase_cost,f.currency)}}</td><td><form class="d-flex gap-1" method="post" action="{{url_for('adjust_filament',filament_id=f.id)}}"><input class="form-control form-control-sm" style="width:95px" name="grams" type="number" step="0.01" placeholder="+/- g" required><button class="btn btn-sm btn-outline-dark">OK</button></form></td></tr>{% else %}<tr><td colspan="4" class="text-secondary">Nenhum filamento cadastrado.</td></tr>{% endfor %}
+        </tbody></table></div></div></div>
+      </div>
+      <div class="card"><div class="p-3 border-bottom"><strong>Histórico de movimentações</strong></div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Data</th><th>Filamento</th><th>Movimento</th><th>Gramas</th><th>Observação</th></tr></thead><tbody>{% for m in movements %}<tr><td>{{m.created_at.strftime('%m/%d/%Y %H:%M')}}</td><td>{{m.material}} · {{m.color}}</td><td>{{m.movement_type}}</td><td class="{% if m.grams<0 %}text-danger{% else %}text-success{% endif %}">{{m.grams}} g</td><td>{{m.notes or ''}}</td></tr>{% else %}<tr><td colspan="5" class="text-secondary">Sem movimentações.</td></tr>{% endfor %}</tbody></table></div></div>
+    {% endif %}
+
+    {% if tab=='quotes' %}
+      <div class="section-title">Orçamentos e produção</div>
+      <div class="card p-4 mb-4"><h5>Novo orçamento</h5><form method="post" action="{{url_for('add_quote')}}">
+        <div class="row g-3"><div class="col-md-4"><label class="form-label">Tipo</label><select class="form-select" name="project_type"><option value="customer">Projeto de cliente</option><option value="legacy">Projeto Legacy</option></select></div><div class="col-md-4"><label class="form-label">Cliente</label><select class="form-select" name="customer_id"><option value="">—</option>{% for c in customers %}<option value="{{c.id}}">{{c.name}}</option>{% endfor %}</select></div><div class="col-md-4"><label class="form-label">Título</label><input class="form-control" name="title" required></div></div>
+        <div class="row g-3 mt-1"><div class="col-md-4"><label class="form-label">Descrição do item</label><input class="form-control" name="item_description"></div><div class="col-md-2"><label class="form-label">Qtd.</label><input class="form-control" name="quantity" type="number" step="0.01" value="1"></div><div class="col-md-2"><label class="form-label">Preço unit.</label><input class="form-control" name="unit_price" type="number" step="0.01"></div><div class="col-md-2"><label class="form-label">Desconto</label><input class="form-control" name="discount" type="number" step="0.01"></div><div class="col-md-2"><label class="form-label">Moeda</label><select class="form-select" name="currency"><option>USD</option><option>BRL</option></select></div></div>
+        <div class="row g-3 mt-1"><div class="col-md-4"><label class="form-label">Filamento para produção</label><select class="form-select" name="filament_id"><option value="">Definir depois</option>{% for f in filaments %}<option value="{{f.id}}">{{f.material}} · {{f.color}} — {{f.remaining_g}}g</option>{% endfor %}</select></div><div class="col-md-2"><label class="form-label">Estimativa (g)</label><input class="form-control" name="estimated_grams" type="number" step="0.01"></div><div class="col-md-2"><label class="form-label">Horas</label><input class="form-control" name="print_hours" type="number" step="0.1"></div><div class="col-md-4"><label class="form-label">Observações</label><input class="form-control" name="notes"></div></div>
+        <button class="btn btn-dark mt-3">Criar orçamento</button>
+      </form></div>
+      <div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Nº</th><th>Projeto / Cliente</th><th>Valor</th><th>Produção</th><th>Status</th></tr></thead><tbody>
+        {% for q in quotes %}<tr><td class="mono">{{q.quote_number}}</td><td><strong>{{q.title}}</strong><div class="small text-secondary">{% if q.project_type=='legacy' %}Projeto Legacy{% else %}{{q.customer_name or 'Cliente'}}{% endif %}</div></td><td>{{money(q.total,q.currency)}}</td><td>{% if q.filament_id %}{{q.filament_material}} · {{q.filament_color}}<div class="small text-secondary">estimado {{q.estimated_grams}} g{% if q.actual_grams %} · real {{q.actual_grams}} g{% endif %}</div>{% else %}<span class="text-secondary">Não definido</span>{% endif %}</td><td style="min-width:260px"><div class="mb-1"><span class="badge badge-soft">{{status_label(q.status)}}</span>{% if q.stock_deducted %}<span class="badge text-bg-success">estoque baixado</span>{% endif %}</div><form class="d-flex gap-1" method="post" action="{{url_for('quote_status',quote_id=q.id)}}"><select class="form-select form-select-sm" name="status">{% for s in quote_statuses %}<option value="{{s}}" {% if q.status==s %}selected{% endif %}>{{status_label(s)}}</option>{% endfor %}</select><input class="form-control form-control-sm" name="actual_grams" type="number" step="0.01" placeholder="g real" style="width:90px"><button class="btn btn-sm btn-dark">Salvar</button></form></td></tr>{% else %}<tr><td colspan="5" class="text-secondary">Nenhum orçamento criado.</td></tr>{% endfor %}
+      </tbody></table></div></div>
+    {% endif %}
+
+    {% if tab=='projects' %}
+      <div class="section-title">Projetos e arquivos STL</div>
+      <div class="row g-4 mb-4"><div class="col-lg-4"><div class="card p-4"><h5>Novo projeto</h5><form method="post" action="{{url_for('add_project')}}"><div class="mb-2"><label class="form-label">Tipo</label><select class="form-select" name="project_type"><option value="legacy">Projeto Legacy</option><option value="customer">Projeto de cliente</option></select></div><div class="mb-2"><label class="form-label">Cliente opcional</label><select class="form-select" name="customer_id"><option value="">—</option>{% for c in customers %}<option value="{{c.id}}">{{c.name}}</option>{% endfor %}</select></div><div class="mb-2"><label class="form-label">Nome</label><input class="form-control" name="name" required></div><div class="mb-3"><label class="form-label">Descrição</label><textarea class="form-control" name="description"></textarea></div><button class="btn btn-dark w-100">Criar projeto</button></form></div></div>
+      <div class="col-lg-8"><div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Projeto</th><th>Tipo</th><th>Arquivos</th><th>Anexar STL/arquivo</th></tr></thead><tbody>{% for p in projects %}<tr><td><strong>{{p.name}}</strong><div class="small text-secondary">{{p.customer_name or p.quote_number or ''}}</div></td><td>{{'Legacy' if p.project_type=='legacy' else 'Cliente'}}</td><td>{{p.file_count}}</td><td><form method="post" enctype="multipart/form-data" action="{{url_for('upload_project_file',project_id=p.id)}}"><div class="input-group input-group-sm"><input class="form-control" type="file" name="file" required><input class="form-control" name="version" value="v1" style="max-width:65px"><button class="btn btn-outline-dark">Enviar</button></div></form></td></tr>{% else %}<tr><td colspan="4" class="text-secondary">Nenhum projeto criado.</td></tr>{% endfor %}</tbody></table></div></div></div></div>
+      <div class="card"><div class="p-3 border-bottom"><strong>Arquivos armazenados</strong> <span class="text-secondary">(até 15 MB por arquivo)</span></div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Projeto</th><th>Arquivo</th><th>Versão</th><th>Tamanho</th><th></th></tr></thead><tbody>{% for f in files %}<tr><td>{{f.project_name}}</td><td>{{f.file_name}}</td><td>{{f.version}}</td><td>{{'%.2f'|format(f.file_size/1024/1024)}} MB</td><td><a class="btn btn-sm btn-outline-dark" href="{{url_for('download_file',file_id=f.id)}}">Baixar</a></td></tr>{% else %}<tr><td colspan="5" class="text-secondary">Nenhum arquivo anexado.</td></tr>{% endfor %}</tbody></table></div></div>
+    {% endif %}
+
+    {% if tab=='machines' %}
+      <div class="section-title">Máquinas</div><div class="row g-4"><div class="col-lg-4"><div class="card p-4"><h5>Nova máquina</h5><form method="post" action="{{url_for('add_machine')}}"><div class="mb-2"><label class="form-label">Nome</label><input class="form-control" name="name" required></div><div class="mb-2"><label class="form-label">Modelo</label><input class="form-control" name="model"></div><div class="mb-2"><label class="form-label">Status</label><select class="form-select" name="status"><option value="available">Disponível</option><option value="printing">Imprimindo</option><option value="maintenance">Manutenção</option></select></div><div class="row g-2"><div class="col-7"><label class="form-label">Custo/hora</label><input class="form-control" name="hourly_cost" type="number" step="0.01"></div><div class="col-5"><label class="form-label">Moeda</label><select class="form-select" name="currency"><option>USD</option><option>BRL</option></select></div></div><div class="mt-2 mb-3"><label class="form-label">Notas</label><textarea class="form-control" name="notes"></textarea></div><button class="btn btn-dark w-100">Cadastrar máquina</button></form></div></div><div class="col-lg-8"><div class="card"><table class="table mb-0"><thead><tr><th>Máquina</th><th>Status</th><th>Custo/h</th></tr></thead><tbody>{% for m in machines %}<tr><td><strong>{{m.name}}</strong><div class="small text-secondary">{{m.model or ''}}</div></td><td>{{m.status}}</td><td>{{money(m.hourly_cost,m.currency)}}</td></tr>{% else %}<tr><td colspan="3" class="text-secondary">Nenhuma máquina cadastrada.</td></tr>{% endfor %}</tbody></table></div></div></div>
+    {% endif %}
+
+    {% if tab=='catalog' %}
+      <div class="section-title">Catálogo Legacy</div><div class="alert alert-light border">Projetos próprios podem virar produtos para venda. O endereço público do catálogo é <a href="{{url_for('public_catalog')}}" target="_blank">/catalog ↗</a>.</div>
+      <div class="row g-4"><div class="col-lg-4"><div class="card p-4"><h5>Novo produto</h5><form method="post" action="{{url_for('add_product')}}"><div class="mb-2"><label class="form-label">Projeto</label><select class="form-select" name="project_id"><option value="">—</option>{% for p in projects if p.project_type=='legacy' %}<option value="{{p.id}}">{{p.name}}</option>{% endfor %}</select></div><div class="mb-2"><label class="form-label">Nome</label><input class="form-control" name="name" required></div><div class="mb-2"><label class="form-label">SKU</label><input class="form-control" name="sku"></div><div class="mb-2"><label class="form-label">Descrição</label><textarea class="form-control" name="description"></textarea></div><div class="row g-2"><div class="col-6"><label class="form-label">Preço</label><input class="form-control" name="price" type="number" step="0.01"></div><div class="col-6"><label class="form-label">Moeda</label><select class="form-select" name="currency"><option>USD</option><option>BRL</option></select></div></div><div class="row g-2 mt-1"><div class="col-6"><label class="form-label">Qtd pronta</label><input class="form-control" name="stock_qty" type="number" value="0"></div><div class="col-6"><label class="form-label">g/unidade</label><input class="form-control" name="grams_per_unit" type="number" step="0.01"></div></div><button class="btn btn-dark w-100 mt-3">Adicionar produto</button></form></div></div><div class="col-lg-8"><div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Produto</th><th>Preço</th><th>Prontos</th><th>Ajustar</th></tr></thead><tbody>{% for p in products %}<tr><td><strong>{{p.name}}</strong><div class="small text-secondary">{{p.sku or ''}} {{p.project_name or ''}}</div></td><td>{{money(p.price,p.currency)}}</td><td><strong>{{p.stock_qty}}</strong></td><td><form class="d-flex gap-1" method="post" action="{{url_for('product_stock',product_id=p.id)}}"><input class="form-control form-control-sm" name="qty" type="number" placeholder="+/-" style="width:80px"><button class="btn btn-sm btn-outline-dark">OK</button></form></td></tr>{% else %}<tr><td colspan="4" class="text-secondary">Nenhum produto no catálogo.</td></tr>{% endfor %}</tbody></table></div></div></div></div>
+    {% endif %}
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
