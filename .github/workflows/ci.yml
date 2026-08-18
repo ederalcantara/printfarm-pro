@@ -1,0 +1,27 @@
+name: Sistema Legacy CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile app.py
+      - name: Health route smoke test
+        run: |
+          python - <<'PY'
+          from app import app
+          c = app.test_client()
+          r = c.get('/health')
+          assert r.status_code == 200
+          assert r.get_json()['status'] == 'ok'
+          print(r.get_json())
+          PY
