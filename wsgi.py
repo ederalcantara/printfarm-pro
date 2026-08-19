@@ -1,7 +1,9 @@
 from app import app
 from calculator import calculator_bp
+from customer_portal import portal_bp
 
 app.register_blueprint(calculator_bp)
+app.register_blueprint(portal_bp)
 
 
 @app.after_request
