@@ -6,29 +6,33 @@
   <title>Calculadora · Sistema Legacy</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body{background:#f5f6f8;color:#0d1117}.wrap{max-width:1100px;margin:0 auto;padding:28px}.card{border:1px solid #e6e8ed;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}.brand{font-weight:800;font-size:26px}.brand span{color:#6d28d9}.kpi{font-size:30px;font-weight:800}.muted{color:#667085}.result-card{background:#111827;color:#fff}
+    body{background:#f5f6f8;color:#0d1117}.wrap{max-width:1180px;margin:0 auto;padding:28px}.card{border:1px solid #e6e8ed;border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}.brand{font-weight:800;font-size:26px}.brand span{color:#6d28d9}.kpi{font-size:30px;font-weight:800}.muted{color:#667085}.result-card{background:#111827;color:#fff}
   </style>
 </head>
 <body>
 <div class="wrap">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <div><div class="brand">Sistema <span>Legacy</span></div><div class="muted">Calculadora de custo e preço para impressão 3D</div></div>
+    <div><div class="brand">Sistema <span>Legacy</span></div><div class="muted">Calculadora de custo e preço para impressão 3D e acabamento UV</div></div>
     <a class="btn btn-outline-dark" href="/">← Voltar ao sistema</a>
   </div>
 
   <div class="row g-4">
     <div class="col-lg-7">
       <div class="card p-4">
-        <h4 class="mb-3">Dados da produção</h4>
+        <h4 class="mb-3">Custos da produção</h4>
         <form method="post">
           <div class="row g-3">
             <div class="col-md-4"><label class="form-label">Moeda</label><select class="form-select" name="currency"><option {% if values.currency=='USD' %}selected{% endif %}>USD</option><option {% if values.currency=='BRL' %}selected{% endif %}>BRL</option></select></div>
-            <div class="col-md-4"><label class="form-label">Preço do rolo</label><input class="form-control" type="number" step="0.01" min="0" name="filament_price" value="{{values.filament_price}}" required></div>
+            <div class="col-md-4"><label class="form-label">Preço do rolo de filamento</label><input class="form-control" type="number" step="0.01" min="0" name="filament_price" value="{{values.filament_price}}" required></div>
             <div class="col-md-4"><label class="form-label">Peso do rolo (g)</label><input class="form-control" type="number" step="0.01" min="1" name="spool_weight_g" value="{{values.spool_weight_g}}" required></div>
             <div class="col-md-4"><label class="form-label">Filamento usado (g)</label><input class="form-control" type="number" step="0.01" min="0" name="grams_used" value="{{values.grams_used}}" required></div>
-            <div class="col-md-4"><label class="form-label">Tempo de impressão (h)</label><input class="form-control" type="number" step="0.01" min="0" name="print_hours" value="{{values.print_hours}}" required></div>
-            <div class="col-md-4"><label class="form-label">Custo da máquina / hora</label><input class="form-control" type="number" step="0.01" min="0" name="machine_hourly_cost" value="{{values.machine_hourly_cost}}" required></div>
-            <div class="col-md-4"><label class="form-label">Energia elétrica</label><input class="form-control" type="number" step="0.01" min="0" name="electricity_cost" value="{{values.electricity_cost}}"></div>
+            <div class="col-md-4"><label class="form-label">Tempo de impressão (h)</label><input class="form-control" type="number" step="0.01" min="0" name="print_hours" value="{{values.print_hours}}"></div>
+            <div class="col-md-4"><label class="form-label">Custo da máquina / hora</label><input class="form-control" type="number" step="0.01" min="0" name="machine_hourly_cost" value="{{values.machine_hourly_cost}}"></div>
+
+            <div class="col-md-4"><label class="form-label">Energia elétrica</label><input class="form-control" type="number" step="0.01" min="0" name="electricity_cost" value="{{values.electricity_cost}}"><div class="form-text">Valor total de energia desse trabalho.</div></div>
+            <div class="col-md-4"><label class="form-label">Tinta UV</label><input class="form-control" type="number" step="0.01" min="0" name="uv_ink_cost" value="{{values.uv_ink_cost}}"><div class="form-text">Custo da tinta UV usada.</div></div>
+            <div class="col-md-4"><label class="form-label">Acessórios</label><input class="form-control" type="number" step="0.01" min="0" name="accessories_cost" value="{{values.accessories_cost}}"><div class="form-text">Ímã, chaveiro, parafuso, fita, LED etc.</div></div>
+            <div class="col-md-4"><label class="form-label">Embalagem</label><input class="form-control" type="number" step="0.01" min="0" name="packaging_cost" value="{{values.packaging_cost}}"><div class="form-text">Caixa, saco, etiqueta, proteção etc.</div></div>
             <div class="col-md-4"><label class="form-label">Outros custos</label><input class="form-control" type="number" step="0.01" min="0" name="other_costs" value="{{values.other_costs}}"></div>
             <div class="col-md-4"><label class="form-label">Quantidade</label><input class="form-control" type="number" step="1" min="1" name="quantity" value="{{values.quantity}}"></div>
             <div class="col-md-6"><label class="form-label">Reserva para falhas (%)</label><input class="form-control" type="number" step="0.1" min="0" name="failure_percent" value="{{values.failure_percent}}"></div>
@@ -43,24 +47,29 @@
       {% if result %}
       {% set sym='R$' if result.currency=='BRL' else '$' %}
       <div class="card result-card p-4 mb-3">
-        <div class="muted text-light opacity-75">Preço de venda sugerido</div>
+        <div class="text-light opacity-75">Preço de venda sugerido</div>
         <div class="kpi">{{sym}} {{'%.2f'|format(result.sale_price)}}</div>
         <div class="mt-2">Preço por unidade: <strong>{{sym}} {{'%.2f'|format(result.unit_price)}}</strong></div>
       </div>
       <div class="card p-4">
         <h5>Detalhamento</h5>
         <table class="table mb-0"><tbody>
-          <tr><td>Material</td><td class="text-end">{{sym}} {{'%.2f'|format(result.material_cost)}}</td></tr>
+          <tr><td>Filamento</td><td class="text-end">{{sym}} {{'%.2f'|format(result.filament_cost)}}</td></tr>
           <tr><td>Máquina</td><td class="text-end">{{sym}} {{'%.2f'|format(result.machine_cost)}}</td></tr>
-          <tr><td>Base de custos</td><td class="text-end">{{sym}} {{'%.2f'|format(result.base_cost)}}</td></tr>
+          <tr><td>Energia</td><td class="text-end">{{sym}} {{'%.2f'|format(result.electricity_cost)}}</td></tr>
+          <tr><td>Tinta UV</td><td class="text-end">{{sym}} {{'%.2f'|format(result.uv_ink_cost)}}</td></tr>
+          <tr><td>Acessórios</td><td class="text-end">{{sym}} {{'%.2f'|format(result.accessories_cost)}}</td></tr>
+          <tr><td>Embalagem</td><td class="text-end">{{sym}} {{'%.2f'|format(result.packaging_cost)}}</td></tr>
+          <tr><td>Outros</td><td class="text-end">{{sym}} {{'%.2f'|format(result.other_costs)}}</td></tr>
+          <tr class="table-light"><td><strong>Custo direto</strong></td><td class="text-end"><strong>{{sym}} {{'%.2f'|format(result.direct_cost)}}</strong></td></tr>
           <tr><td>Reserva para falhas</td><td class="text-end">{{sym}} {{'%.2f'|format(result.failure_reserve)}}</td></tr>
           <tr><td>Custo de produção/un.</td><td class="text-end">{{sym}} {{'%.2f'|format(result.production_cost)}}</td></tr>
-          <tr><td>Custo total</td><td class="text-end">{{sym}} {{'%.2f'|format(result.total_cost)}}</td></tr>
+          <tr><td>Custo total do lote</td><td class="text-end">{{sym}} {{'%.2f'|format(result.total_cost)}}</td></tr>
           <tr><td>Lucro</td><td class="text-end">{{sym}} {{'%.2f'|format(result.profit)}}</td></tr>
         </tbody></table>
       </div>
       {% else %}
-      <div class="card p-4"><h5>Como funciona</h5><p class="muted mb-0">A calculadora soma filamento, custo de máquina, energia, outros custos e reserva de falha. Depois aplica sua margem de lucro e mostra o preço final e o preço por unidade.</p></div>
+      <div class="card p-4"><h5>Como funciona</h5><p class="muted mb-0">Informe separadamente filamento, energia, tinta UV, acessórios, embalagem, máquina e demais despesas. A calculadora soma os custos, adiciona a reserva de falhas e aplica sua margem para chegar ao preço final.</p></div>
       {% endif %}
     </div>
   </div>
