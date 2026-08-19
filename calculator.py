@@ -32,8 +32,11 @@ def calculator():
         'spool_weight_g': request.form.get('spool_weight_g', '1000'),
         'grams_used': request.form.get('grams_used', ''),
         'print_hours': request.form.get('print_hours', ''),
-        'machine_hourly_cost': request.form.get('machine_hourly_cost', ''),
+        'machine_hourly_cost': request.form.get('machine_hourly_cost', '0'),
         'electricity_cost': request.form.get('electricity_cost', '0'),
+        'uv_ink_cost': request.form.get('uv_ink_cost', '0'),
+        'accessories_cost': request.form.get('accessories_cost', '0'),
+        'packaging_cost': request.form.get('packaging_cost', '0'),
         'other_costs': request.form.get('other_costs', '0'),
         'failure_percent': request.form.get('failure_percent', '5'),
         'profit_percent': request.form.get('profit_percent', '40'),
@@ -47,25 +50,41 @@ def calculator():
         print_hours = d(values['print_hours'])
         machine_hourly_cost = d(values['machine_hourly_cost'])
         electricity_cost = d(values['electricity_cost'])
+        uv_ink_cost = d(values['uv_ink_cost'])
+        accessories_cost = d(values['accessories_cost'])
+        packaging_cost = d(values['packaging_cost'])
         other_costs = d(values['other_costs'])
         failure_percent = d(values['failure_percent'])
         profit_percent = d(values['profit_percent'])
         quantity = max(d(values['quantity'], '1'), Decimal('1'))
 
-        material_cost = Decimal('0') if spool_weight_g <= 0 else (filament_price / spool_weight_g) * grams_used
+        filament_cost = Decimal('0') if spool_weight_g <= 0 else (filament_price / spool_weight_g) * grams_used
         machine_cost = print_hours * machine_hourly_cost
-        base_cost = material_cost + machine_cost + electricity_cost + other_costs
-        failure_reserve = base_cost * failure_percent / Decimal('100')
-        production_cost = base_cost + failure_reserve
+        direct_cost = (
+            filament_cost
+            + machine_cost
+            + electricity_cost
+            + uv_ink_cost
+            + accessories_cost
+            + packaging_cost
+            + other_costs
+        )
+        failure_reserve = direct_cost * failure_percent / Decimal('100')
+        production_cost = direct_cost + failure_reserve
         total_cost = production_cost * quantity
         profit = total_cost * profit_percent / Decimal('100')
         sale_price = total_cost + profit
         unit_price = sale_price / quantity
 
         result = {
-            'material_cost': material_cost,
+            'filament_cost': filament_cost,
             'machine_cost': machine_cost,
-            'base_cost': base_cost,
+            'electricity_cost': electricity_cost,
+            'uv_ink_cost': uv_ink_cost,
+            'accessories_cost': accessories_cost,
+            'packaging_cost': packaging_cost,
+            'other_costs': other_costs,
+            'direct_cost': direct_cost,
             'failure_reserve': failure_reserve,
             'production_cost': production_cost,
             'total_cost': total_cost,
