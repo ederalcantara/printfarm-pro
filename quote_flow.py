@@ -199,18 +199,30 @@ def enter_flow(quote_id):
     c = db()
     try:
         with c.cursor() as cur:
-            cur.execute('SELECT q.status, l.client_status, l.request_id FROM quotes q LEFT JOIN quote_public_links l ON l.quote_id=q.id WHERE q.id=%s FOR UPDATE', (quote_id,))
-            row = cur.fetchone()
-            if not row:
+            # Lock only the quote row. PostgreSQL does not allow FOR UPDATE on the
+            # nullable side of an outer join, so the public-link row is read separately.
+            cur.execute('SELECT status FROM quotes WHERE id=%s FOR UPDATE', (quote_id,))
+            quote = cur.fetchone()
+            if not quote:
                 return 'Orçamento não encontrado.', 404
-            if row['status'] != 'approved' and row['client_status'] != 'approved':
+
+            cur.execute('SELECT client_status, request_id FROM quote_public_links WHERE quote_id=%s', (quote_id,))
+            link = cur.fetchone()
+            client_status = link['client_status'] if link else None
+            request_id = link['request_id'] if link else None
+
+            if quote['status'] != 'approved' and client_status != 'approved':
                 flash('O orçamento precisa ser aprovado pelo cliente antes de entrar no fluxo.', 'danger')
                 return redirect(url_for('quote_flow.sales_flow'))
+
             cur.execute("UPDATE quotes SET status='execution', updated_at=NOW() WHERE id=%s", (quote_id,))
             cur.execute("UPDATE projects SET status='execution' WHERE quote_id=%s", (quote_id,))
-            if row['request_id']:
-                cur.execute("UPDATE customer_requests SET status='production' WHERE id=%s", (row['request_id'],))
+            if request_id:
+                cur.execute("UPDATE customer_requests SET status='production' WHERE id=%s", (request_id,))
         c.commit()
+    except Exception:
+        c.rollback()
+        raise
     finally:
         c.close()
     flash('Orçamento aprovado entrou no fluxo de execução.', 'success')
