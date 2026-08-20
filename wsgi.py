@@ -13,6 +13,7 @@ from online_requests import online_bp
 from quote_flow import quote_flow_bp
 from production import production_bp
 from machine_admin import machine_admin_bp
+from marketing import marketing_bp
 
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
@@ -20,6 +21,7 @@ app.register_blueprint(online_bp)
 app.register_blueprint(quote_flow_bp)
 app.register_blueprint(production_bp)
 app.register_blueprint(machine_admin_bp)
+app.register_blueprint(marketing_bp)
 
 
 def _production_snapshot():
@@ -106,6 +108,8 @@ def inject_sidebar_links(response):
         additions += '<a class="nav-link" href="/sales-flow">Fluxo Comercial</a>\n    '
     if 'href="/printing"' not in page:
         additions += '<a class="nav-link" href="/printing">Impressão</a>\n    '
+    if 'href="/marketing"' not in page:
+        additions += '<a class="nav-link" href="/marketing">Marketing / Instagram</a>\n    '
     if 'href="/calculator"' not in page:
         additions += '<a class="nav-link" href="/calculator">Calculadora</a>\n    '
     if marker in page and additions:
@@ -166,7 +170,6 @@ def inject_sidebar_links(response):
 
         flow_marker = '<div class="card p-4">\n        <h5>Fluxo de produção</h5>'
         if flow_marker in page:
-            # Remove the older injected production box if present by targeting only this request's pristine template.
             page = page.replace(flow_marker, ''.join(blocks) + '\n      ' + flow_marker, 1)
 
     response.set_data(page)
