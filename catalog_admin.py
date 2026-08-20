@@ -1,0 +1,177 @@
+import os
+from functools import wraps
+from io import BytesIO
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from flask import Blueprint, flash, redirect, render_template, request, send_file, session, url_for
+
+catalog_admin_bp = Blueprint('catalog_admin', __name__)
+DATABASE_URL = os.getenv('DATABASE_URL')
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+
+
+def db():
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+
+def ensure_catalog_schema():
+    if not DATABASE_URL:
+        return
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_data BYTEA")
+            cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_content_type VARCHAR(120)")
+            cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_name VARCHAR(255)")
+        c.commit()
+    finally:
+        c.close()
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get('user_id'):
+            return redirect(url_for('login'))
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def read_image(uploaded):
+    if not uploaded or not uploaded.filename:
+        return None
+    if uploaded.mimetype not in ALLOWED_IMAGE_TYPES:
+        raise ValueError('Use uma foto JPG, PNG ou WEBP.')
+    data = uploaded.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError('A foto deve ter no máximo 8 MB.')
+    return data, uploaded.mimetype, uploaded.filename
+
+
+@catalog_admin_bp.get('/catalog/manage')
+@login_required
+def manage_catalog():
+    ensure_catalog_schema()
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''SELECT id,sku,name,description,stock_qty,price,currency,active,
+                                  image_data IS NOT NULL AS has_image
+                           FROM products ORDER BY created_at DESC''')
+            products = cur.fetchall()
+    finally:
+        c.close()
+    return render_template('catalog_manage.html', products=products)
+
+
+@catalog_admin_bp.post('/catalog/manage/add')
+@login_required
+def add_catalog_product():
+    ensure_catalog_schema()
+    name = request.form.get('name', '').strip()
+    if not name:
+        flash('Informe o nome da peça.', 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+    try:
+        image = read_image(request.files.get('image'))
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''INSERT INTO products (sku,name,description,stock_qty,price,currency,active,image_data,image_content_type,image_name)
+                           VALUES (%s,%s,%s,%s,%s,%s,TRUE,%s,%s,%s)''',
+                        (request.form.get('sku') or None, name, request.form.get('description'),
+                         int(request.form.get('stock_qty') or 0), request.form.get('price') or 0,
+                         request.form.get('currency', 'USD'),
+                         psycopg2.Binary(image[0]) if image else None,
+                         image[1] if image else None, image[2] if image else None))
+        c.commit()
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        flash('Esse SKU já existe.', 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+    finally:
+        c.close()
+    flash('Peça adicionada ao catálogo.', 'success')
+    return redirect(url_for('catalog_admin.manage_catalog'))
+
+
+@catalog_admin_bp.post('/catalog/manage/<int:product_id>/update')
+@login_required
+def update_catalog_product(product_id):
+    ensure_catalog_schema()
+    try:
+        image = read_image(request.files.get('image'))
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''UPDATE products SET sku=%s,name=%s,description=%s,stock_qty=%s,price=%s,currency=%s,active=%s
+                           WHERE id=%s''',
+                        (request.form.get('sku') or None, request.form.get('name','').strip(), request.form.get('description'),
+                         int(request.form.get('stock_qty') or 0), request.form.get('price') or 0,
+                         request.form.get('currency','USD'), request.form.get('active') == '1', product_id))
+            if image:
+                cur.execute('UPDATE products SET image_data=%s,image_content_type=%s,image_name=%s WHERE id=%s',
+                            (psycopg2.Binary(image[0]), image[1], image[2], product_id))
+        c.commit()
+    except psycopg2.errors.UniqueViolation:
+        c.rollback()
+        flash('Esse SKU já existe.', 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+    finally:
+        c.close()
+    flash('Peça atualizada.', 'success')
+    return redirect(url_for('catalog_admin.manage_catalog'))
+
+
+@catalog_admin_bp.post('/catalog/manage/<int:product_id>/remove-photo')
+@login_required
+def remove_product_photo(product_id):
+    ensure_catalog_schema()
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('UPDATE products SET image_data=NULL,image_content_type=NULL,image_name=NULL WHERE id=%s', (product_id,))
+        c.commit()
+    finally:
+        c.close()
+    flash('Foto removida.', 'success')
+    return redirect(url_for('catalog_admin.manage_catalog'))
+
+
+@catalog_admin_bp.post('/catalog/manage/<int:product_id>/delete')
+@login_required
+def delete_catalog_product(product_id):
+    ensure_catalog_schema()
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('DELETE FROM products WHERE id=%s', (product_id,))
+        c.commit()
+    finally:
+        c.close()
+    flash('Peça excluída do catálogo.', 'success')
+    return redirect(url_for('catalog_admin.manage_catalog'))
+
+
+@catalog_admin_bp.get('/product-image/<int:product_id>')
+def product_image(product_id):
+    ensure_catalog_schema()
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('SELECT image_data,image_content_type,image_name FROM products WHERE id=%s', (product_id,))
+            item = cur.fetchone()
+    finally:
+        c.close()
+    if not item or not item['image_data']:
+        return '', 404
+    return send_file(BytesIO(bytes(item['image_data'])), mimetype=item['image_content_type'] or 'image/jpeg',
+                     download_name=item['image_name'] or f'produto-{product_id}.jpg', max_age=3600)
