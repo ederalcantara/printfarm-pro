@@ -3,11 +3,13 @@ from calculator import calculator_bp
 from customer_portal import portal_bp
 from online_requests import online_bp
 from quote_flow import quote_flow_bp
+from production import production_bp
 
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
 app.register_blueprint(online_bp)
 app.register_blueprint(quote_flow_bp)
+app.register_blueprint(production_bp)
 
 
 @app.after_request
@@ -23,6 +25,8 @@ def inject_sidebar_links(response):
         additions += '<a class="nav-link" href="/online-requests">Pedidos Online</a>\n    '
     if 'href="/sales-flow"' not in html:
         additions += '<a class="nav-link" href="/sales-flow">Fluxo Comercial</a>\n    '
+    if 'href="/printing"' not in html:
+        additions += '<a class="nav-link" href="/printing">Impressão</a>\n    '
     if 'href="/calculator"' not in html:
         additions += '<a class="nav-link" href="/calculator">Calculadora</a>\n    '
     if marker in html and additions:
