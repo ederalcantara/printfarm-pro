@@ -115,7 +115,6 @@ def convert_to_quote(request_id):
             if not r:
                 return 'Pedido não encontrado.', 404
 
-            # Reuse an existing customer by email/phone when possible; otherwise create one.
             customer = None
             if r['email']:
                 cur.execute('SELECT * FROM customers WHERE lower(email)=lower(%s) ORDER BY id LIMIT 1', (r['email'],))
@@ -138,10 +137,12 @@ def convert_to_quote(request_id):
                 RETURNING id
             ''', (number, customer['id'], r['title'], notes))
             quote_id = cur.fetchone()['id']
+            cur.execute("INSERT INTO projects (quote_id,customer_id,project_type,name,status,description) VALUES (%s,%s,'customer',%s,'development',%s)",
+                        (quote_id, customer['id'], r['title'], r['description']))
             cur.execute('UPDATE customer_requests SET status=%s, admin_notes=COALESCE(admin_notes,\'\') || %s WHERE id=%s',
                         ('reviewing', '\nConvertido para orçamento ' + number, request_id))
         c.commit()
     finally:
         c.close()
-    flash('Pedido transformado em orçamento. Agora você pode definir preço, material e produção.', 'success')
-    return redirect(url_for('dashboard', tab='quotes'))
+    flash('Pedido transformado em orçamento. Defina preço e envie ao cliente.', 'success')
+    return redirect(url_for('quote_flow.prepare_quote', quote_id=quote_id))
