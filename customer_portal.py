@@ -57,7 +57,7 @@ def active_products():
     c=conn()
     try:
         with c.cursor() as cur:
-            cur.execute("SELECT id,sku,name,description,price,currency,stock_qty FROM products WHERE active=TRUE ORDER BY created_at DESC")
+            cur.execute("SELECT id,sku,name,description,price,currency,stock_qty,(image_data IS NOT NULL) AS has_image FROM products WHERE active=TRUE ORDER BY created_at DESC")
             return cur.fetchall()
     finally:
         c.close()
@@ -137,7 +137,7 @@ def request_quote():
         finally: c.close()
         return redirect(url_for('portal.request_status', token=token))
 
-    return render_template('request_quote.html', products=active_products())
+    return render_template('request_quote.html', products=active_products(), selected_product=request.args.get('product',''))
 
 @portal_bp.get('/request/<token>')
 def request_status(token):
