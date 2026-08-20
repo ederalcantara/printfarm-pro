@@ -28,7 +28,7 @@ def marketing_home():
     c = db()
     try:
         with c.cursor() as cur:
-            cur.execute("SELECT id,sku,name,description,price,currency,stock_qty FROM products WHERE active=TRUE ORDER BY created_at DESC")
+            cur.execute("SELECT id,sku,name,description,price,currency,stock_qty,(image_data IS NOT NULL) AS has_image FROM products WHERE active=TRUE ORDER BY created_at DESC")
             products = cur.fetchall()
     finally:
         c.close()
