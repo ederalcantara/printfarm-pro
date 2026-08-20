@@ -14,6 +14,7 @@ from quote_flow import quote_flow_bp
 from production import production_bp
 from machine_admin import machine_admin_bp
 from marketing import marketing_bp
+from catalog_admin import catalog_admin_bp, ensure_catalog_schema
 
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
@@ -22,6 +23,8 @@ app.register_blueprint(quote_flow_bp)
 app.register_blueprint(production_bp)
 app.register_blueprint(machine_admin_bp)
 app.register_blueprint(marketing_bp)
+app.register_blueprint(catalog_admin_bp)
+ensure_catalog_schema()
 
 
 def _production_snapshot():
@@ -120,6 +123,14 @@ def inject_sidebar_links(response):
         page = page.replace(
             machine_title,
             '<div class="d-flex justify-content-between align-items-center mb-3"><div class="section-title mb-0">Máquinas</div><a class="btn btn-outline-dark" href="/machines/manage">Gerenciar / Excluir máquinas</a></div>',
+            1,
+        )
+
+    catalog_title = '<div class="section-title">Catálogo Legacy</div>'
+    if catalog_title in page and 'href="/catalog/manage"' not in page:
+        page = page.replace(
+            catalog_title,
+            '<div class="d-flex justify-content-between align-items-center mb-3"><div class="section-title mb-0">Catálogo Legacy</div><a class="btn btn-outline-dark" href="/catalog/manage">Gerenciar peças e fotos</a></div>',
             1,
         )
 
