@@ -16,6 +16,7 @@ from machine_admin import machine_admin_bp
 from marketing import marketing_bp
 from catalog_admin import catalog_admin_bp, ensure_catalog_schema
 from data_cleanup import cleanup_bp
+from payments import payments_bp, ensure_payment_schema
 
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
@@ -26,7 +27,9 @@ app.register_blueprint(machine_admin_bp)
 app.register_blueprint(marketing_bp)
 app.register_blueprint(catalog_admin_bp)
 app.register_blueprint(cleanup_bp)
+app.register_blueprint(payments_bp)
 ensure_catalog_schema()
+ensure_payment_schema()
 
 
 def _production_snapshot():
