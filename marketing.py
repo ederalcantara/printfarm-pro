@@ -12,10 +12,11 @@ from flask import Blueprint, Response, jsonify, render_template, request, sessio
 
 marketing_bp = Blueprint('marketing', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
-INSTAGRAM_ACCESS_TOKEN = os.getenv('INSTAGRAM_ACCESS_TOKEN', '')
-INSTAGRAM_ACCOUNT_ID = os.getenv('INSTAGRAM_ACCOUNT_ID', '17841433632592241')
-INSTAGRAM_GRAPH_VERSION = os.getenv('INSTAGRAM_GRAPH_VERSION', 'v26.0')
-INSTAGRAM_VERIFY_TOKEN = os.getenv('INSTAGRAM_VERIFY_TOKEN', '')
+# Clipboard/env editors can accidentally preserve whitespace or quotes around tokens.
+INSTAGRAM_ACCESS_TOKEN = os.getenv('INSTAGRAM_ACCESS_TOKEN', '').strip().strip('"').strip("'").strip()
+INSTAGRAM_ACCOUNT_ID = os.getenv('INSTAGRAM_ACCOUNT_ID', '17841433632592241').strip()
+INSTAGRAM_GRAPH_VERSION = os.getenv('INSTAGRAM_GRAPH_VERSION', 'v26.0').strip()
+INSTAGRAM_VERIFY_TOKEN = os.getenv('INSTAGRAM_VERIFY_TOKEN', '').strip()
 
 ASSET_SCHEMA = '''
 CREATE TABLE IF NOT EXISTS marketing_assets (
@@ -52,6 +53,28 @@ def login_required(view):
     return wrapped
 
 
+def instagram_error(exc):
+    detail = str(exc)
+    if hasattr(exc, 'read'):
+        try:
+            detail = exc.read().decode('utf-8')
+        except Exception:
+            pass
+    return detail
+
+
+def instagram_get(path, params=None):
+    params = dict(params or {})
+    params['access_token'] = INSTAGRAM_ACCESS_TOKEN
+    url = f'https://graph.instagram.com/{INSTAGRAM_GRAPH_VERSION}/{path.lstrip("/")}?{urllib.parse.urlencode(params)}'
+    req = urllib.request.Request(url, method='GET')
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode('utf-8'))
+    except Exception as exc:
+        raise RuntimeError(instagram_error(exc))
+
+
 def instagram_post(path, payload):
     url = f'https://graph.instagram.com/{INSTAGRAM_GRAPH_VERSION}/{path.lstrip("/")}'
     body = urllib.parse.urlencode(payload).encode('utf-8')
@@ -60,13 +83,7 @@ def instagram_post(path, payload):
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read().decode('utf-8'))
     except Exception as exc:
-        detail = str(exc)
-        if hasattr(exc, 'read'):
-            try:
-                detail = exc.read().decode('utf-8')
-            except Exception:
-                pass
-        raise RuntimeError(detail)
+        raise RuntimeError(instagram_error(exc))
 
 
 @marketing_bp.get('/marketing')
@@ -81,6 +98,22 @@ def marketing_home():
     finally:
         c.close()
     return render_template('marketing.html', products=products, instagram_ready=bool(INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_ACCOUNT_ID))
+
+
+@marketing_bp.get('/marketing/instagram-check')
+@login_required
+def instagram_check():
+    if not INSTAGRAM_ACCESS_TOKEN:
+        return jsonify(ok=False, error='INSTAGRAM_ACCESS_TOKEN não está configurado no Render.'), 400
+    try:
+        info = instagram_get('me', {'fields': 'id,username'})
+        returned_id = str(info.get('id') or '')
+        username = info.get('username') or 'conta conectada'
+        if INSTAGRAM_ACCOUNT_ID and returned_id and returned_id != INSTAGRAM_ACCOUNT_ID:
+            return jsonify(ok=False, error=f'O token é válido, mas pertence à conta {username} ({returned_id}), enquanto o Render está configurado com outro INSTAGRAM_ACCOUNT_ID.'), 409
+        return jsonify(ok=True, username=username, account_id=returned_id, message=f'Conexão válida com @{username}.')
+    except Exception as exc:
+        return jsonify(ok=False, error=f'Falha na validação do token: {exc}'), 502
 
 
 @marketing_bp.post('/marketing/publish-instagram')
@@ -117,6 +150,9 @@ def publish_instagram():
 
     image_url = request.url_root.rstrip('/') + url_for('marketing.marketing_asset', token=public_token)
     try:
+        # Validate the token before creating a media container so authentication
+        # failures are reported separately from publishing/image failures.
+        instagram_get('me', {'fields': 'id,username'})
         created = instagram_post(f'{INSTAGRAM_ACCOUNT_ID}/media', {
             'image_url': image_url,
             'caption': caption,
@@ -158,5 +194,4 @@ def instagram_webhook():
         if mode == 'subscribe' and INSTAGRAM_VERIFY_TOKEN and token == INSTAGRAM_VERIFY_TOKEN:
             return Response(challenge, mimetype='text/plain')
         return 'Verification failed', 403
-    # Webhook reception is intentionally minimal for now. Publishing does not depend on it.
     return jsonify(received=True)
