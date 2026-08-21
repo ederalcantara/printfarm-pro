@@ -18,6 +18,7 @@ from catalog_admin import catalog_admin_bp, ensure_catalog_schema
 from data_cleanup import cleanup_bp
 from payments import payments_bp, ensure_payment_schema
 from business_tools import business_tools_bp
+from customer_tools import customer_tools_bp
 
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
@@ -30,6 +31,7 @@ app.register_blueprint(catalog_admin_bp)
 app.register_blueprint(cleanup_bp)
 app.register_blueprint(payments_bp)
 app.register_blueprint(business_tools_bp)
+app.register_blueprint(customer_tools_bp)
 ensure_catalog_schema()
 ensure_payment_schema()
 
@@ -95,4 +97,20 @@ def inject_sidebar_links(response):
             number=html_lib.unescape(qm.group(1).strip());p=payments['by_quote'].get(number);pay='<td style="min-width:180px">'+_payment_badge(p)+'</td>';idmatch=re.search(r'/quotes/(\d+)/status',row);manage=f'<td><a class="btn btn-sm btn-outline-primary" href="/business/{idmatch.group(1)}">Financeiro / Entrega</a></td>' if idmatch else '<td>—</td>';marker_status='<td style="min-width:260px">'
             return row.replace(marker_status,pay+manage+marker_status,1) if marker_status in row else row
         page=re.sub(r'<tr><td class="mono">.*?</tr>',add_cells,page,flags=re.S)
+    if request.path=='/' and request.args.get('tab')=='customers':
+        # Add a history button to each customer row without changing the original app template.
+        def add_history(match):
+            row=match.group(0)
+            name_match=re.search(r'<td><strong>(.*?)</strong>',row,re.S)
+            if not name_match:return row
+            name=html_lib.unescape(re.sub('<.*?>','',name_match.group(1)).strip())
+            conn=psycopg2.connect(os.getenv('DATABASE_URL'),cursor_factory=RealDictCursor)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT id FROM customers WHERE name=%s ORDER BY id DESC LIMIT 1',(name,));rec=cur.fetchone()
+            finally:conn.close()
+            if not rec:return row
+            return row.replace('</tr>',f'<td><a class="btn btn-sm btn-outline-primary" href="/customers/{rec["id"]}/history">Histórico</a></td></tr>',1)
+        page=page.replace('<th>Observações</th></tr>','<th>Observações</th><th>Histórico</th></tr>',1)
+        page=re.sub(r'<tr><td><strong>.*?</tr>',add_history,page,flags=re.S)
     response.set_data(page);response.headers['Content-Length']=str(len(response.get_data()));return response
