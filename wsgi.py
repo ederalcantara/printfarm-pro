@@ -35,47 +35,142 @@ ensure_payment_schema()
 def _production_snapshot():
     database_url = os.getenv('DATABASE_URL')
     result = {'active': [], 'queue': [], 'completed': []}
-    if not database_url: return result
+    if not database_url:
+        return result
     conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
     try:
         with conn.cursor() as cur:
             try:
-                cur.execute("""SELECT j.estimated_grams,j.started_at,q.quote_number,q.title,c.name AS customer_name,p.name AS project_name,m.name AS machine_name,m.model AS machine_model,f.material AS filament_material,f.color AS filament_color FROM print_jobs j JOIN quotes q ON q.id=j.quote_id LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN projects p ON p.id=j.project_id LEFT JOIN machines m ON m.id=j.machine_id LEFT JOIN filaments f ON f.id=j.filament_id WHERE j.status='printing' ORDER BY j.started_at DESC NULLS LAST"""); result['active']=cur.fetchall()
-                cur.execute("""SELECT q.id,q.quote_number,q.title,q.updated_at,c.name AS customer_name,p.name AS project_name FROM quotes q LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN projects p ON p.quote_id=q.id WHERE q.status='execution' ORDER BY q.updated_at ASC"""); result['queue']=cur.fetchall()
-                cur.execute("""SELECT j.actual_grams,j.completed_at,q.quote_number,q.title,c.name AS customer_name,p.name AS project_name,m.name AS machine_name,f.material AS filament_material,f.color AS filament_color FROM print_jobs j JOIN quotes q ON q.id=j.quote_id LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN projects p ON p.id=j.project_id LEFT JOIN machines m ON m.id=j.machine_id LEFT JOIN filaments f ON f.id=j.filament_id WHERE j.status='completed' ORDER BY j.completed_at DESC NULLS LAST LIMIT 5"""); result['completed']=cur.fetchall()
+                cur.execute("""SELECT j.estimated_grams,j.started_at,q.quote_number,q.title,c.name AS customer_name,p.name AS project_name,m.name AS machine_name,m.model AS machine_model,f.material AS filament_material,f.color AS filament_color FROM print_jobs j JOIN quotes q ON q.id=j.quote_id LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN projects p ON p.id=j.project_id LEFT JOIN machines m ON m.id=j.machine_id LEFT JOIN filaments f ON f.id=j.filament_id WHERE j.status='printing' ORDER BY j.started_at DESC NULLS LAST""")
+                result['active'] = cur.fetchall()
+                cur.execute("""SELECT q.id,q.quote_number,q.title,q.updated_at,c.name AS customer_name,p.name AS project_name FROM quotes q LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN projects p ON p.quote_id=q.id WHERE q.status='execution' ORDER BY q.updated_at ASC""")
+                result['queue'] = cur.fetchall()
+                cur.execute("""SELECT j.actual_grams,j.completed_at,q.quote_number,q.title,c.name AS customer_name,p.name AS project_name,m.name AS machine_name,f.material AS filament_material,f.color AS filament_color FROM print_jobs j JOIN quotes q ON q.id=j.quote_id LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN projects p ON p.id=j.project_id LEFT JOIN machines m ON m.id=j.machine_id LEFT JOIN filaments f ON f.id=j.filament_id WHERE j.status='completed' ORDER BY j.completed_at DESC NULLS LAST LIMIT 5""")
+                result['completed'] = cur.fetchall()
             except psycopg2.errors.UndefinedTable:
-                conn.rollback(); return result
-    finally: conn.close()
+                conn.rollback()
+                return result
+    finally:
+        conn.close()
     return result
 
-def _esc(value,default='—'): return html_lib.escape(str(value if value not in (None,'') else default))
+
+def _payment_snapshot():
+    result = {'pending': [], 'by_quote': {}}
+    database_url = os.getenv('DATABASE_URL')
+    if not database_url:
+        return result
+    conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+    try:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("""
+                    SELECT p.quote_id,p.status,p.method,p.amount_due,p.amount_paid,p.client_note,p.client_reported_at,
+                           q.quote_number,q.title,q.currency,c.name AS customer_name
+                    FROM quote_payments p
+                    JOIN quotes q ON q.id=p.quote_id
+                    LEFT JOIN customers c ON c.id=q.customer_id
+                    ORDER BY COALESCE(p.client_reported_at,p.updated_at) DESC
+                """)
+                rows = cur.fetchall()
+                result['by_quote'] = {r['quote_number']: r for r in rows}
+                result['pending'] = [r for r in rows if r['status'] == 'pending_confirmation']
+            except psycopg2.errors.UndefinedTable:
+                conn.rollback()
+    finally:
+        conn.close()
+    return result
+
+
+def _esc(value, default='—'):
+    return html_lib.escape(str(value if value not in (None, '') else default))
+
+
+def _payment_badge(row):
+    if not row:
+        return '<span class="badge text-bg-secondary">Não liberado</span>'
+    status = row.get('status')
+    quote_id = row.get('quote_id')
+    if status == 'pending_confirmation':
+        badge = '<span class="badge text-bg-danger">Cliente informou pagamento</span>'
+    elif status == 'paid':
+        badge = '<span class="badge text-bg-success">Pago</span>'
+    elif status == 'deposit_paid':
+        badge = '<span class="badge text-bg-success">Sinal pago</span>'
+    elif status == 'awaiting_payment':
+        badge = '<span class="badge text-bg-warning">Aguardando pagamento</span>'
+    else:
+        badge = '<span class="badge text-bg-secondary">Não liberado</span>'
+    return badge + f'<div class="mt-1"><a class="btn btn-sm btn-outline-dark" href="/quotes/{quote_id}/payment">Pagamento</a></div>'
+
 
 @app.after_request
 def inject_sidebar_links(response):
-    content_type=response.headers.get('Content-Type','')
-    if 'text/html' not in content_type:return response
-    page=response.get_data(as_text=True)
-    marker='<a class="nav-link" href="/catalog" target="_blank">Catálogo público ↗</a>'
-    additions=''
-    for href,label in [('/online-requests','Pedidos Online'),('/sales-flow','Fluxo Comercial'),('/printing','Impressão'),('/marketing','Marketing / Instagram'),('/calculator','Calculadora'),('/admin/cleanup','Limpar dados de teste')]:
-        if f'href="{href}"' not in page:additions+=f'<a class="nav-link" href="{href}">{label}</a>\n    '
-    if marker in page and additions:page=page.replace(marker,additions+marker,1)
-    machine_title='<div class="section-title">Máquinas</div>'
-    if machine_title in page and 'href="/machines/manage"' not in page:page=page.replace(machine_title,'<div class="d-flex justify-content-between align-items-center mb-3"><div class="section-title mb-0">Máquinas</div><a class="btn btn-outline-dark" href="/machines/manage">Gerenciar / Excluir máquinas</a></div>',1)
-    catalog_title='<div class="section-title">Catálogo Legacy</div>'
-    if catalog_title in page and 'href="/catalog/manage"' not in page:page=page.replace(catalog_title,'<div class="d-flex justify-content-between align-items-center mb-3"><div class="section-title mb-0">Catálogo Legacy</div><a class="btn btn-outline-dark" href="/catalog/manage">Gerenciar peças e fotos</a></div>',1)
-    if request.path=='/' and request.args.get('tab','dashboard')=='dashboard':
-        s=_production_snapshot(); active=s['active']; queue=s['queue']; completed=s['completed']
-        page=re.sub(r'(<div class="k">Imprimindo agora</div><div class="n">)\d+(</div>)',rf'\g<1>{len(active)}\2',page,count=1)
-        summary='<div class="row g-3 mb-4">'+f'<div class="col-md-4"><div class="card stat"><div class="k">Fila para imprimir</div><div class="n">{len(queue)}</div><a class="small" href="/printing">Abrir fila →</a></div></div>'+f'<div class="col-md-4"><div class="card stat"><div class="k">Imprimindo agora</div><div class="n">{len(active)}</div><a class="small" href="/printing">Ver impressão →</a></div></div>'+f'<div class="col-md-4"><div class="card stat"><div class="k">Concluídas recentes</div><div class="n">{len(completed)}</div><a class="small" href="/printing">Ver histórico →</a></div></div></div>'
-        blocks=[summary]
+    content_type = response.headers.get('Content-Type', '')
+    if 'text/html' not in content_type:
+        return response
+
+    page = response.get_data(as_text=True)
+    marker = '<a class="nav-link" href="/catalog" target="_blank">Catálogo público ↗</a>'
+    additions = ''
+    for href, label in [('/online-requests','Pedidos Online'),('/sales-flow','Fluxo Comercial'),('/printing','Impressão'),('/marketing','Marketing / Instagram'),('/calculator','Calculadora'),('/admin/cleanup','Limpar dados de teste')]:
+        if f'href="{href}"' not in page:
+            additions += f'<a class="nav-link" href="{href}">{label}</a>\n    '
+    if marker in page and additions:
+        page = page.replace(marker, additions + marker, 1)
+
+    machine_title = '<div class="section-title">Máquinas</div>'
+    if machine_title in page and 'href="/machines/manage"' not in page:
+        page = page.replace(machine_title, '<div class="d-flex justify-content-between align-items-center mb-3"><div class="section-title mb-0">Máquinas</div><a class="btn btn-outline-dark" href="/machines/manage">Gerenciar / Excluir máquinas</a></div>', 1)
+    catalog_title = '<div class="section-title">Catálogo Legacy</div>'
+    if catalog_title in page and 'href="/catalog/manage"' not in page:
+        page = page.replace(catalog_title, '<div class="d-flex justify-content-between align-items-center mb-3"><div class="section-title mb-0">Catálogo Legacy</div><a class="btn btn-outline-dark" href="/catalog/manage">Gerenciar peças e fotos</a></div>', 1)
+
+    payments = _payment_snapshot()
+
+    if request.path == '/' and request.args.get('tab', 'dashboard') == 'dashboard':
+        s = _production_snapshot()
+        active, queue, completed = s['active'], s['queue'], s['completed']
+        page = re.sub(r'(<div class="k">Imprimindo agora</div><div class="n">)\d+(</div>)', rf'\g<1>{len(active)}\2', page, count=1)
+        blocks = []
+        if payments['pending']:
+            rows = ''.join(
+                f'<tr><td><strong>{_esc(p.get("customer_name"))}</strong></td><td>{_esc(p.get("quote_number"))}</td><td>{_esc(p.get("method"),"").upper()}</td><td><strong>{_esc(p.get("amount_due"),0)}</strong></td><td><a class="btn btn-sm btn-danger" href="/quotes/{p.get("quote_id")}/payment">Confirmar pagamento</a></td></tr>'
+                for p in payments['pending']
+            )
+            blocks.append(f'<div class="alert alert-warning border-warning mb-4"><div class="d-flex justify-content-between align-items-center"><div><strong>💰 Pagamentos aguardando sua confirmação: {len(payments["pending"])}</strong><div class="small">O cliente informou que pagou. Confirme somente depois de verificar Zelle/Venmo.</div></div></div></div><div class="card mb-4"><div class="p-3 border-bottom"><strong>Pagamentos informados pelos clientes</strong></div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Cliente</th><th>Orçamento</th><th>Método</th><th>Valor</th><th>Ação</th></tr></thead><tbody>{rows}</tbody></table></div></div>')
+        summary = '<div class="row g-3 mb-4">' + f'<div class="col-md-4"><div class="card stat"><div class="k">Fila para imprimir</div><div class="n">{len(queue)}</div><a class="small" href="/printing">Abrir fila →</a></div></div>' + f'<div class="col-md-4"><div class="card stat"><div class="k">Imprimindo agora</div><div class="n">{len(active)}</div><a class="small" href="/printing">Ver impressão →</a></div></div>' + f'<div class="col-md-4"><div class="card stat"><div class="k">Concluídas recentes</div><div class="n">{len(completed)}</div><a class="small" href="/printing">Ver histórico →</a></div></div></div>'
+        blocks.append(summary)
         if queue:
-            rows=''.join(f'<tr><td><strong>{_esc(i.get("project_name") or i.get("title"))}</strong><div class="small text-secondary">{_esc(i.get("quote_number"),"")}</div></td><td>{_esc(i.get("customer_name"))}</td><td><span class="badge text-bg-warning">Aguardando início</span></td></tr>' for i in queue); blocks.append('<div class="card mb-4"><div class="p-3 border-bottom"><strong>Fila para imprimir</strong></div><div class="table-responsive"><table class="table mb-0"><tbody>'+rows+'</tbody></table></div></div>')
+            rows = ''.join(f'<tr><td><strong>{_esc(i.get("project_name") or i.get("title"))}</strong><div class="small text-secondary">{_esc(i.get("quote_number"),"")}</div></td><td>{_esc(i.get("customer_name"))}</td><td><span class="badge text-bg-warning">Aguardando início</span></td></tr>' for i in queue)
+            blocks.append('<div class="card mb-4"><div class="p-3 border-bottom"><strong>Fila para imprimir</strong></div><div class="table-responsive"><table class="table mb-0"><tbody>' + rows + '</tbody></table></div></div>')
         if active:
-            rows=''.join(f'<tr><td><strong>{_esc(i.get("project_name") or i.get("title"))}</strong></td><td>{_esc(i.get("customer_name"))}</td><td>{_esc(i.get("machine_name"))}</td><td>{_esc(i.get("filament_material"))} · {_esc(i.get("filament_color"))}</td><td>{_esc(i.get("estimated_grams"),0)} g</td></tr>' for i in active); blocks.append('<div class="card mb-4"><div class="p-3 border-bottom"><strong>Imprimindo agora</strong></div><table class="table mb-0"><tbody>'+rows+'</tbody></table></div>')
-        else:blocks.append('<div class="card p-3 mb-4"><strong>Nenhuma impressão ativa</strong><div class="text-secondary small">Um trabalho aparece aqui depois de clicar em Iniciar impressão.</div></div>')
+            rows = ''.join(f'<tr><td><strong>{_esc(i.get("project_name") or i.get("title"))}</strong></td><td>{_esc(i.get("customer_name"))}</td><td>{_esc(i.get("machine_name"))}</td><td>{_esc(i.get("filament_material"))} · {_esc(i.get("filament_color"))}</td><td>{_esc(i.get("estimated_grams"),0)} g</td></tr>' for i in active)
+            blocks.append('<div class="card mb-4"><div class="p-3 border-bottom"><strong>Imprimindo agora</strong></div><table class="table mb-0"><tbody>' + rows + '</tbody></table></div>')
+        else:
+            blocks.append('<div class="card p-3 mb-4"><strong>Nenhuma impressão ativa</strong><div class="text-secondary small">Um trabalho aparece aqui depois de clicar em Iniciar impressão.</div></div>')
         if completed:
-            rows=''.join(f'<tr><td><strong>{_esc(i.get("project_name") or i.get("title"))}</strong></td><td>{_esc(i.get("customer_name"))}</td><td>{_esc(i.get("machine_name"))}</td><td>{_esc(i.get("actual_grams"),0)} g</td></tr>' for i in completed); blocks.append('<div class="card mb-4"><div class="p-3 border-bottom"><strong>Últimas impressões concluídas</strong></div><table class="table mb-0"><tbody>'+rows+'</tbody></table></div>')
-        flow_marker='<div class="card p-4">\n        <h5>Fluxo de produção</h5>'
-        if flow_marker in page:page=page.replace(flow_marker,''.join(blocks)+'\n      '+flow_marker,1)
-    response.set_data(page); response.headers['Content-Length']=str(len(response.get_data())); return response
+            rows = ''.join(f'<tr><td><strong>{_esc(i.get("project_name") or i.get("title"))}</strong></td><td>{_esc(i.get("customer_name"))}</td><td>{_esc(i.get("machine_name"))}</td><td>{_esc(i.get("actual_grams"),0)} g</td></tr>' for i in completed)
+            blocks.append('<div class="card mb-4"><div class="p-3 border-bottom"><strong>Últimas impressões concluídas</strong></div><table class="table mb-0"><tbody>' + rows + '</tbody></table></div>')
+        flow_marker = '<div class="card p-4">\n        <h5>Fluxo de produção</h5>'
+        if flow_marker in page:
+            page = page.replace(flow_marker, ''.join(blocks) + '\n      ' + flow_marker, 1)
+
+    if request.path == '/' and request.args.get('tab') == 'quotes':
+        page = page.replace('<th>Produção</th><th>Status</th>', '<th>Produção</th><th>Pagamento</th><th>Status</th>', 1)
+        def add_payment_cell(match):
+            row = match.group(0)
+            qmatch = re.search(r'<td class="mono">([^<]+)</td>', row)
+            if not qmatch:
+                return row
+            quote_number = html_lib.unescape(qmatch.group(1).strip())
+            payment_cell = '<td style="min-width:180px">' + _payment_badge(payments['by_quote'].get(quote_number)) + '</td>'
+            marker_status = '<td style="min-width:260px">'
+            if marker_status in row:
+                row = row.replace(marker_status, payment_cell + marker_status, 1)
+            return row
+        page = re.sub(r'<tr><td class="mono">.*?</tr>', add_payment_cell, page, flags=re.S)
+
+    response.set_data(page)
+    response.headers['Content-Length'] = str(len(response.get_data()))
+    return response
