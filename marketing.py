@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -12,11 +13,20 @@ from flask import Blueprint, Response, jsonify, render_template, request, sessio
 
 marketing_bp = Blueprint('marketing', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
-# Clipboard/env editors can accidentally preserve whitespace or quotes around tokens.
-INSTAGRAM_ACCESS_TOKEN = os.getenv('INSTAGRAM_ACCESS_TOKEN', '').strip().strip('"').strip("'").strip()
-INSTAGRAM_ACCOUNT_ID = os.getenv('INSTAGRAM_ACCOUNT_ID', '17841433632592241').strip()
-INSTAGRAM_GRAPH_VERSION = os.getenv('INSTAGRAM_GRAPH_VERSION', 'v26.0').strip()
-INSTAGRAM_VERIFY_TOKEN = os.getenv('INSTAGRAM_VERIFY_TOKEN', '').strip()
+
+
+def _clean_token(value):
+    """Normalize secrets copied through dashboards without ever logging the secret."""
+    value = (value or '').strip().strip('"').strip("'").strip()
+    # Access tokens never legitimately contain whitespace. Remove accidental CR/LF/spaces
+    # introduced by copy/paste or multiline environment editors.
+    return ''.join(value.split())
+
+
+INSTAGRAM_ACCESS_TOKEN = _clean_token(os.getenv('INSTAGRAM_ACCESS_TOKEN', ''))
+INSTAGRAM_ACCOUNT_ID = (os.getenv('INSTAGRAM_ACCOUNT_ID', '17841433632592241') or '').strip()
+INSTAGRAM_GRAPH_VERSION = (os.getenv('INSTAGRAM_GRAPH_VERSION', 'v26.0') or 'v26.0').strip()
+INSTAGRAM_VERIFY_TOKEN = (os.getenv('INSTAGRAM_VERIFY_TOKEN', '') or '').strip()
 
 ASSET_SCHEMA = '''
 CREATE TABLE IF NOT EXISTS marketing_assets (
@@ -53,6 +63,17 @@ def login_required(view):
     return wrapped
 
 
+def token_diagnostics():
+    if not INSTAGRAM_ACCESS_TOKEN:
+        return {'configured': False, 'length': 0, 'prefix': '', 'fingerprint': ''}
+    return {
+        'configured': True,
+        'length': len(INSTAGRAM_ACCESS_TOKEN),
+        'prefix': INSTAGRAM_ACCESS_TOKEN[:5],
+        'fingerprint': hashlib.sha256(INSTAGRAM_ACCESS_TOKEN.encode('utf-8')).hexdigest()[:10],
+    }
+
+
 def instagram_error(exc):
     detail = str(exc)
     if hasattr(exc, 'read'):
@@ -67,7 +88,7 @@ def instagram_get(path, params=None):
     params = dict(params or {})
     params['access_token'] = INSTAGRAM_ACCESS_TOKEN
     url = f'https://graph.instagram.com/{INSTAGRAM_GRAPH_VERSION}/{path.lstrip("/")}?{urllib.parse.urlencode(params)}'
-    req = urllib.request.Request(url, method='GET')
+    req = urllib.request.Request(url, method='GET', headers={'Accept': 'application/json'})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read().decode('utf-8'))
@@ -78,7 +99,10 @@ def instagram_get(path, params=None):
 def instagram_post(path, payload):
     url = f'https://graph.instagram.com/{INSTAGRAM_GRAPH_VERSION}/{path.lstrip("/")}'
     body = urllib.parse.urlencode(payload).encode('utf-8')
-    req = urllib.request.Request(url, data=body, method='POST')
+    req = urllib.request.Request(url, data=body, method='POST', headers={
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+    })
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read().decode('utf-8'))
@@ -103,25 +127,28 @@ def marketing_home():
 @marketing_bp.get('/marketing/instagram-check')
 @login_required
 def instagram_check():
+    diag = token_diagnostics()
     if not INSTAGRAM_ACCESS_TOKEN:
-        return jsonify(ok=False, error='INSTAGRAM_ACCESS_TOKEN não está configurado no Render.'), 400
+        return jsonify(ok=False, diagnostics=diag, error='INSTAGRAM_ACCESS_TOKEN não está configurado no Render.'), 400
     try:
         info = instagram_get('me', {'fields': 'id,username'})
         returned_id = str(info.get('id') or '')
         username = info.get('username') or 'conta conectada'
         if INSTAGRAM_ACCOUNT_ID and returned_id and returned_id != INSTAGRAM_ACCOUNT_ID:
-            return jsonify(ok=False, error=f'O token é válido, mas pertence à conta {username} ({returned_id}), enquanto o Render está configurado com outro INSTAGRAM_ACCOUNT_ID.'), 409
-        return jsonify(ok=True, username=username, account_id=returned_id, message=f'Conexão válida com @{username}.')
+            return jsonify(ok=False, diagnostics=diag, error=f'O token é válido, mas pertence à conta {username} ({returned_id}), enquanto o Render está configurado para {INSTAGRAM_ACCOUNT_ID}.'), 409
+        return jsonify(ok=True, diagnostics=diag, username=username, account_id=returned_id, message=f'Conexão válida com @{username}.')
     except Exception as exc:
-        return jsonify(ok=False, error=f'Falha na validação do token: {exc}'), 502
+        print(f'[instagram-auth] validation failed diag={diag} error={exc}', flush=True)
+        return jsonify(ok=False, diagnostics=diag, error=f'Falha na validação do token: {exc}'), 502
 
 
 @marketing_bp.post('/marketing/publish-instagram')
 @login_required
 def publish_instagram():
     ensure_assets()
+    diag = token_diagnostics()
     if not INSTAGRAM_ACCESS_TOKEN:
-        return jsonify(ok=False, error='Instagram ainda não está conectado no Render. Falta INSTAGRAM_ACCESS_TOKEN.'), 400
+        return jsonify(ok=False, diagnostics=diag, error='Instagram ainda não está conectado no Render. Falta INSTAGRAM_ACCESS_TOKEN.'), 400
 
     payload = request.get_json(silent=True) or {}
     data_url = payload.get('image_data', '')
@@ -138,6 +165,17 @@ def publish_instagram():
     if len(image_bytes) > 12 * 1024 * 1024:
         return jsonify(ok=False, error='A arte ficou grande demais para publicação.'), 400
 
+    # Validate authentication before storing/rendering an asset. This prevents false
+    # publishing errors and provides a safe fingerprint for Render diagnostics.
+    try:
+        info = instagram_get('me', {'fields': 'id,username'})
+        returned_id = str(info.get('id') or '')
+        if returned_id and INSTAGRAM_ACCOUNT_ID and returned_id != INSTAGRAM_ACCOUNT_ID:
+            return jsonify(ok=False, diagnostics=diag, error=f'Token válido, porém o ID da conta é {returned_id}; ajuste INSTAGRAM_ACCOUNT_ID no Render.'), 409
+    except Exception as exc:
+        print(f'[instagram-auth] publish blocked diag={diag} account_id={INSTAGRAM_ACCOUNT_ID} error={exc}', flush=True)
+        return jsonify(ok=False, diagnostics=diag, error=f'Autenticação do Instagram falhou antes da publicação: {exc}'), 502
+
     public_token = secrets.token_urlsafe(24)
     c = db()
     try:
@@ -150,9 +188,6 @@ def publish_instagram():
 
     image_url = request.url_root.rstrip('/') + url_for('marketing.marketing_asset', token=public_token)
     try:
-        # Validate the token before creating a media container so authentication
-        # failures are reported separately from publishing/image failures.
-        instagram_get('me', {'fields': 'id,username'})
         created = instagram_post(f'{INSTAGRAM_ACCOUNT_ID}/media', {
             'image_url': image_url,
             'caption': caption,
@@ -167,7 +202,8 @@ def publish_instagram():
         })
         return jsonify(ok=True, media_id=published.get('id'), message='Publicado no Instagram com sucesso.')
     except Exception as exc:
-        return jsonify(ok=False, error=f'Instagram recusou a publicação: {exc}'), 502
+        print(f'[instagram-publish] diag={diag} account_id={INSTAGRAM_ACCOUNT_ID} image_url={image_url} error={exc}', flush=True)
+        return jsonify(ok=False, diagnostics=diag, error=f'Instagram recusou a publicação: {exc}'), 502
 
 
 @marketing_bp.get('/marketing/media/<token>.png')
