@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import secrets
+import time
 import urllib.parse
 import urllib.request
 from functools import wraps
@@ -83,6 +84,24 @@ def discover_instagram_user():
     uid=str(info.get('user_id') or info.get('id') or '')
     return uid,info.get('username') or ''
 
+def wait_for_media_container(creation_id, attempts=20, delay=2):
+    """Wait until Meta finishes processing the media container before publishing it."""
+    last={}
+    for _ in range(attempts):
+        try:
+            last=instagram_get(str(creation_id),{'fields':'status_code,status'})
+        except Exception as exc:
+            print('INSTAGRAM_DIAG status_check_failed',str(exc)[:500],flush=True)
+            time.sleep(delay)
+            continue
+        status=(last.get('status_code') or '').upper()
+        print('INSTAGRAM_DIAG container_status',{'creation_id':creation_id,'status':status},flush=True)
+        if status=='FINISHED':return last
+        if status in ('ERROR','EXPIRED'):
+            raise RuntimeError(f'Falha no processamento da mídia pelo Instagram: {last}')
+        time.sleep(delay)
+    raise RuntimeError(f'Instagram não terminou de processar a mídia a tempo. Último status: {last}')
+
 def png_to_instagram_jpeg(image_bytes):
     """Convert canvas PNG into a standard RGB JPEG that Instagram accepts."""
     try:
@@ -153,6 +172,7 @@ def publish_instagram():
         created=instagram_post(f'{account_id}/media',{'image_url':image_url,'caption':caption,'access_token':INSTAGRAM_ACCESS_TOKEN})
         creation_id=created.get('id')
         if not creation_id:raise RuntimeError('A Meta não retornou o ID do container de mídia.')
+        wait_for_media_container(creation_id)
         published=instagram_post(f'{account_id}/media_publish',{'creation_id':creation_id,'access_token':INSTAGRAM_ACCESS_TOKEN})
         return jsonify(ok=True,media_id=published.get('id'),message=f'Publicado no Instagram @{username} com sucesso.')
     except Exception as exc:
