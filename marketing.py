@@ -6,9 +6,11 @@ import secrets
 import urllib.parse
 import urllib.request
 from functools import wraps
+from io import BytesIO
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from PIL import Image
 from flask import Blueprint, Response, jsonify, render_template, request, session, redirect, url_for
 
 marketing_bp = Blueprint('marketing', __name__)
@@ -27,7 +29,7 @@ CREATE TABLE IF NOT EXISTS marketing_assets (
  id SERIAL PRIMARY KEY,
  public_token VARCHAR(80) UNIQUE NOT NULL,
  image_data BYTEA NOT NULL,
- content_type VARCHAR(80) NOT NULL DEFAULT 'image/png',
+ content_type VARCHAR(80) NOT NULL DEFAULT 'image/jpeg',
  caption TEXT,
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -81,6 +83,24 @@ def discover_instagram_user():
     uid=str(info.get('user_id') or info.get('id') or '')
     return uid,info.get('username') or ''
 
+def png_to_instagram_jpeg(image_bytes):
+    """Convert canvas PNG into a standard RGB JPEG that Instagram accepts."""
+    try:
+        with Image.open(BytesIO(image_bytes)) as img:
+            img.load()
+            if img.mode in ('RGBA','LA') or ('transparency' in img.info):
+                rgba=img.convert('RGBA')
+                background=Image.new('RGB', rgba.size, 'white')
+                background.paste(rgba, mask=rgba.getchannel('A'))
+                img=background
+            else:
+                img=img.convert('RGB')
+            out=BytesIO()
+            img.save(out, format='JPEG', quality=95, optimize=True, progressive=False)
+            return out.getvalue()
+    except Exception as exc:
+        raise RuntimeError(f'Falha ao converter a arte para JPEG: {exc}')
+
 @marketing_bp.get('/marketing')
 @login_required
 def marketing_home():
@@ -113,17 +133,22 @@ def publish_instagram():
     payload=request.get_json(silent=True) or {};data_url=payload.get('image_data','');caption=(payload.get('caption') or '').strip();fmt=payload.get('format','feed')
     if fmt!='feed':return jsonify(ok=False,error='A publicação direta está liberada primeiro para Feed 1080×1080.'),400
     if not data_url.startswith('data:image/png;base64,'):return jsonify(ok=False,error='Arte PNG inválida.'),400
-    try:image_bytes=base64.b64decode(data_url.split(',',1)[1],validate=True)
-    except Exception:return jsonify(ok=False,error='Não foi possível ler a arte.'),400
+    try:
+        source_bytes=base64.b64decode(data_url.split(',',1)[1],validate=True)
+        image_bytes=png_to_instagram_jpeg(source_bytes)
+    except Exception as exc:
+        return jsonify(ok=False,error=str(exc)),400
+    if len(image_bytes)>8*1024*1024:return jsonify(ok=False,error='A arte JPEG ficou grande demais para publicação.'),400
     public_token=secrets.token_urlsafe(24);c=db()
     try:
-        with c.cursor() as cur:cur.execute('INSERT INTO marketing_assets(public_token,image_data,caption) VALUES (%s,%s,%s)',(public_token,psycopg2.Binary(image_bytes),caption))
+        with c.cursor() as cur:
+            cur.execute('INSERT INTO marketing_assets(public_token,image_data,content_type,caption) VALUES (%s,%s,%s,%s)',(public_token,psycopg2.Binary(image_bytes),'image/jpeg',caption))
         c.commit()
     finally:c.close()
-    image_url=request.url_root.rstrip('/')+url_for('marketing.marketing_asset',token=public_token)
+    image_url=request.url_root.rstrip('/')+url_for('marketing.marketing_asset_jpg',token=public_token)
     try:
         account_id,username=discover_instagram_user()
-        print('INSTAGRAM_DIAG auth_ok',{'username':username,'account_id':account_id},flush=True)
+        print('INSTAGRAM_DIAG auth_ok',{'username':username,'account_id':account_id,'image_url':image_url},flush=True)
         if not account_id:raise RuntimeError('Instagram não retornou user_id da conta conectada.')
         created=instagram_post(f'{account_id}/media',{'image_url':image_url,'caption':caption,'access_token':INSTAGRAM_ACCESS_TOKEN})
         creation_id=created.get('id')
@@ -134,14 +159,18 @@ def publish_instagram():
         print('INSTAGRAM_DIAG publish_failed',meta,str(exc)[:800],flush=True)
         return jsonify(ok=False,error=f'Instagram recusou a publicação: {exc}',diagnostic=meta),502
 
-@marketing_bp.get('/marketing/media/<token>.png')
-def marketing_asset(token):
+@marketing_bp.get('/marketing/media/<token>.jpg')
+def marketing_asset_jpg(token):
     ensure_assets();c=db()
     try:
         with c.cursor() as cur:cur.execute('SELECT image_data,content_type FROM marketing_assets WHERE public_token=%s',(token,));row=cur.fetchone()
     finally:c.close()
     if not row:return 'Imagem não encontrada',404
-    return Response(bytes(row['image_data']),mimetype=row['content_type'],headers={'Cache-Control':'public, max-age=86400'})
+    return Response(bytes(row['image_data']),mimetype='image/jpeg',headers={
+        'Cache-Control':'public, max-age=86400',
+        'Content-Disposition':'inline; filename="instagram.jpg"',
+        'X-Content-Type-Options':'nosniff'
+    })
 
 @marketing_bp.route('/instagram/webhook',methods=['GET','POST'])
 def instagram_webhook():
