@@ -72,6 +72,22 @@ def manage_catalog():
     return render_template('catalog_manage.html', products=products)
 
 
+@catalog_admin_bp.post('/catalog/manage/publish-all')
+@login_required
+def publish_all_catalog_products():
+    ensure_catalog_schema()
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('UPDATE products SET active=TRUE WHERE active=FALSE AND image_data IS NOT NULL')
+            updated = cur.rowcount
+        c.commit()
+    finally:
+        c.close()
+    flash(f'{updated} peça(s) publicadas no catálogo público.', 'success')
+    return redirect(url_for('catalog_admin.manage_catalog'))
+
+
 @catalog_admin_bp.post('/catalog/manage/batch')
 @login_required
 def batch_catalog_photos():
