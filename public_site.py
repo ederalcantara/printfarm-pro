@@ -1,7 +1,7 @@
 import os
 
 import psycopg2
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, session, redirect
 from psycopg2.extras import RealDictCursor
 
 public_site_bp = Blueprint('public_site', __name__)
@@ -32,3 +32,10 @@ def _products():
 @public_site_bp.get('/home')
 def public_home():
     return render_template('public_home.html', products=_products())
+
+
+@public_site_bp.get('/admin')
+def admin_entry():
+    if session.get('user_id'):
+        return redirect('/?admin=1')
+    return redirect('/login')
