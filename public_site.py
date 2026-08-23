@@ -1,4 +1,5 @@
 import os
+import re
 
 import psycopg2
 from flask import Blueprint, render_template, session, redirect, request, current_app
@@ -15,6 +16,18 @@ def _ensure_image_columns(conn):
         cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_content_type VARCHAR(120)")
         cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_name VARCHAR(255)")
     conn.commit()
+
+
+def _legacy_number(sku):
+    """Accept Legacy 001, LEGACY-001, Legacy001 and similar SKU formatting."""
+    text = (sku or '').strip()
+    match = re.search(r'(?i)\blegacy\s*[-_ ]*0*(\d+)\b', text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
 
 
 def _products():
@@ -38,15 +51,14 @@ def _products():
             products = cur.fetchall()
 
         for p in products:
-            sku = (p.get('sku') or '').strip().lower()
-            is_exclusive = False
-            if sku.startswith('legacy '):
-                try:
-                    number = int(sku.split()[-1])
-                    is_exclusive = 1 <= number <= 14
-                except (ValueError, IndexError):
-                    pass
-            result['exclusive' if is_exclusive else 'catalog'].append(p)
+            legacy_no = _legacy_number(p.get('sku'))
+            if legacy_no is not None and 1 <= legacy_no <= 14:
+                p['legacy_number'] = legacy_no
+                result['exclusive'].append(p)
+            else:
+                result['catalog'].append(p)
+
+        result['exclusive'].sort(key=lambda p: p.get('legacy_number', 9999))
         return result
     except Exception:
         current_app.logger.exception('Public catalog failed to load products')
