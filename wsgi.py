@@ -19,6 +19,7 @@ from data_cleanup import cleanup_bp
 from payments import payments_bp, ensure_payment_schema
 from business_tools import business_tools_bp
 from customer_tools import customer_tools_bp
+from public_site import public_site_bp
 
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
@@ -32,6 +33,7 @@ app.register_blueprint(cleanup_bp)
 app.register_blueprint(payments_bp)
 app.register_blueprint(business_tools_bp)
 app.register_blueprint(customer_tools_bp)
+app.register_blueprint(public_site_bp)
 ensure_catalog_schema()
 ensure_payment_schema()
 
@@ -98,7 +100,6 @@ def inject_sidebar_links(response):
             return row.replace(marker_status,pay+manage+marker_status,1) if marker_status in row else row
         page=re.sub(r'<tr><td class="mono">.*?</tr>',add_cells,page,flags=re.S)
     if request.path=='/' and request.args.get('tab')=='customers':
-        # Add a history button to each customer row without changing the original app template.
         def add_history(match):
             row=match.group(0)
             name_match=re.search(r'<td><strong>(.*?)</strong>',row,re.S)
