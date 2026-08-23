@@ -29,22 +29,26 @@ def _products():
         conn.close()
 
 
+def _whatsapp_url():
+    number = ''.join(ch for ch in os.getenv('WHATSAPP_NUMBER', '') if ch.isdigit())
+    if not number:
+        return None
+    return f'https://wa.me/{number}?text=Olá%20Legacy%203D%20Studio!%20Gostaria%20de%20mais%20informações.'
+
+
 @public_site_bp.before_app_request
 def public_main_domain():
-    # Visitors to the main domain see the company website, never the admin login.
-    # An authenticated owner keeps the existing dashboard workflow at '/'.
     if request.path == '/' and not session.get('user_id'):
         return redirect('/home')
 
 
 @public_site_bp.get('/home')
 def public_home():
-    return render_template('public_home.html', products=_products())
+    return render_template('public_home.html', products=_products(), whatsapp_url=_whatsapp_url())
 
 
 @public_site_bp.get('/admin')
 def admin_entry():
-    # Private entry point for the Legacy management system.
     if session.get('user_id'):
         return redirect('/')
     return redirect('/login')
