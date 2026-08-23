@@ -43,6 +43,24 @@ def login_required(view):
     return wrapped
 
 
+@catalog_admin_bp.before_app_request
+def products_admin_entry():
+    # The old Catalog tab now opens the single Products control center.
+    if request.path == '/' and request.args.get('tab') == 'catalog' and session.get('user_id'):
+        return redirect(url_for('catalog_admin.manage_catalog'))
+
+
+@catalog_admin_bp.after_app_request
+def products_admin_label(response):
+    # Keep the legacy dashboard template compatible while presenting the new admin name.
+    if request.path == '/' and response.mimetype == 'text/html':
+        html = response.get_data(as_text=True)
+        html = html.replace('>Catálogo</a>', '>Produtos</a>', 1)
+        response.set_data(html)
+        response.headers['Content-Length'] = len(response.get_data())
+    return response
+
+
 def read_image(uploaded):
     if not uploaded or not uploaded.filename:
         return None
