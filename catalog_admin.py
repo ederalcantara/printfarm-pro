@@ -9,6 +9,7 @@ from flask import Blueprint, flash, redirect, render_template, request, send_fil
 catalog_admin_bp = Blueprint('catalog_admin', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_BATCH_IMAGES = 30
 ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 
 
@@ -50,6 +51,11 @@ def read_image(uploaded):
     return data, uploaded.mimetype, uploaded.filename
 
 
+def name_from_filename(filename):
+    base = os.path.splitext(os.path.basename(filename))[0]
+    return base.replace('_', ' ').replace('-', ' ').strip() or 'Nova peça'
+
+
 @catalog_admin_bp.get('/catalog/manage')
 @login_required
 def manage_catalog():
@@ -64,6 +70,43 @@ def manage_catalog():
     finally:
         c.close()
     return render_template('catalog_manage.html', products=products)
+
+
+@catalog_admin_bp.post('/catalog/manage/batch')
+@login_required
+def batch_catalog_photos():
+    ensure_catalog_schema()
+    uploads = [f for f in request.files.getlist('images') if f and f.filename]
+    if not uploads:
+        flash('Selecione pelo menos uma foto.', 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+    if len(uploads) > MAX_BATCH_IMAGES:
+        flash(f'Envie no máximo {MAX_BATCH_IMAGES} fotos por vez.', 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+
+    prepared = []
+    try:
+        for uploaded in uploads:
+            image = read_image(uploaded)
+            prepared.append((name_from_filename(uploaded.filename), image))
+    except ValueError as exc:
+        flash(f'{uploaded.filename}: {exc}', 'danger')
+        return redirect(url_for('catalog_admin.manage_catalog'))
+
+    c = db()
+    try:
+        with c.cursor() as cur:
+            for name, image in prepared:
+                cur.execute('''INSERT INTO products
+                               (sku,name,description,stock_qty,price,currency,active,image_data,image_content_type,image_name)
+                               VALUES (NULL,%s,%s,0,0,'USD',FALSE,%s,%s,%s)''',
+                            (name, 'Importado em lote — revise nome, preço, descrição e visibilidade antes de publicar.',
+                             psycopg2.Binary(image[0]), image[1], image[2]))
+        c.commit()
+    finally:
+        c.close()
+    flash(f'{len(prepared)} foto(s) importada(s). As novas peças ficaram ocultas até você revisar e marcar Visível = Sim.', 'success')
+    return redirect(url_for('catalog_admin.manage_catalog'))
 
 
 @catalog_admin_bp.post('/catalog/manage/add')
