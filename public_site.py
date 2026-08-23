@@ -30,9 +30,8 @@ def _products():
 
 
 def _whatsapp_url():
-    number = ''.join(ch for ch in os.getenv('WHATSAPP_NUMBER', '') if ch.isdigit())
-    if not number:
-        return None
+    # US business WhatsApp used by Legacy for customer communication.
+    number = ''.join(ch for ch in os.getenv('WHATSAPP_NUMBER', '17743757803') if ch.isdigit())
     return f'https://wa.me/{number}?text=Olá%20Legacy%203D%20Studio!%20Gostaria%20de%20mais%20informações.'
 
 
