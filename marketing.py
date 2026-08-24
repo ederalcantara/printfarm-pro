@@ -447,3 +447,42 @@ def instagram_webhook():
             return Response(challenge, mimetype='text/plain')
         return 'Verification failed', 403
     return jsonify(received=True)
+
+
+@marketing_bp.after_app_request
+def inject_instagram_connection_panel(response):
+    """Add a live, non-secret Instagram connection indicator to the Marketing page."""
+    if request.path != '/marketing' or response.status_code != 200 or not response.mimetype.startswith('text/html'):
+        return response
+    html = response.get_data(as_text=True)
+    marker = '<div class="row g-4">'
+    if marker not in html or 'instagramConnectionPanel' in html:
+        return response
+    panel = '''<div id="instagramConnectionPanel" class="card p-3 mb-4" style="border-radius:18px;border:1px solid #e6e8ed">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+<div><div class="fw-bold">Conexão do Instagram</div><div id="instagramConnectionText" class="small text-secondary">Verificando conexão...</div></div>
+<div class="d-flex align-items-center gap-2"><span id="instagramConnectionBadge" class="badge text-bg-secondary">● Verificando</span><button type="button" class="btn btn-outline-dark btn-sm" onclick="checkInstagramConnection()">Verificar conexão</button></div>
+</div></div>'''
+    script = '''<script>
+async function checkInstagramConnection(){
+ const badge=document.getElementById('instagramConnectionBadge');
+ const text=document.getElementById('instagramConnectionText');
+ if(!badge||!text)return;
+ badge.className='badge text-bg-secondary';badge.textContent='● Verificando';text.textContent='Testando autenticação com a Meta...';
+ try{
+  const r=await fetch('/marketing/instagram-check',{headers:{'Accept':'application/json'}});
+  const data=await r.json();
+  if(!r.ok||!data.ok)throw new Error(data.error||'Falha ao verificar conexão.');
+  badge.className='badge text-bg-success';badge.textContent='● Instagram conectado';
+  text.textContent='Conta conectada: @'+(data.username||'legacy_3dstudio');
+ }catch(e){
+  badge.className='badge text-bg-danger';badge.textContent='● Instagram desconectado';
+  text.textContent=e.message||'Não foi possível validar a conexão.';
+ }
+}
+document.addEventListener('DOMContentLoaded',checkInstagramConnection);
+</script>'''
+    html = html.replace(marker, panel + marker, 1).replace('</body>', script + '</body>', 1)
+    response.set_data(html)
+    response.headers['Content-Length'] = str(len(response.get_data()))
+    return response
