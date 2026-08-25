@@ -1,4 +1,5 @@
 import os
+from decimal import Decimal, InvalidOperation
 
 import psycopg2
 from flask import Blueprint, render_template, session, redirect, request, current_app, abort, url_for
@@ -8,7 +9,14 @@ public_site_bp = Blueprint('public_site', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 
-def _products(search=''):
+def _decimal(value):
+    try:
+        return Decimal(str(value)) if value not in (None, '') else None
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _products(search='', min_price=None, max_price=None):
     result={'exclusive':[],'catalog':[]}
     if not DATABASE_URL:
         current_app.logger.error('Public catalog: DATABASE_URL is not configured'); return result
@@ -19,7 +27,11 @@ def _products(search=''):
             params=[];where='WHERE active IS TRUE'
             if search:
                 where += " AND (name ILIKE %s OR COALESCE(sku,'') ILIKE %s OR COALESCE(description,'') ILIKE %s)"
-                term=f'%{search}%';params=[term,term,term]
+                term=f'%{search}%';params.extend([term,term,term])
+            if min_price is not None:
+                where += ' AND price >= %s';params.append(min_price)
+            if max_price is not None:
+                where += ' AND price <= %s';params.append(max_price)
             cur.execute(f'''SELECT id,slug,sku,name,description,price,currency,collection,display_order,stock_qty,reserved_stock_qty,
                                   GREATEST(stock_qty-reserved_stock_qty,0) AS available_stock_qty,
                                   fulfillment_mode,lead_time_days,image_data IS NOT NULL AS has_image
@@ -44,8 +56,11 @@ def public_main_domain():
 
 @public_site_bp.get('/home')
 def public_home():
-    search=request.args.get('q','').strip();groups=_products(search)
-    return render_template('public_home.html',exclusive_products=groups['exclusive'],catalog_products=groups['catalog'],whatsapp_url=_whatsapp_url(),search=search)
+    search=request.args.get('q','').strip()
+    min_raw=request.args.get('min_price','').strip();max_raw=request.args.get('max_price','').strip()
+    min_price=_decimal(min_raw);max_price=_decimal(max_raw)
+    groups=_products(search,min_price,max_price)
+    return render_template('public_home.html',exclusive_products=groups['exclusive'],catalog_products=groups['catalog'],whatsapp_url=_whatsapp_url(),search=search,min_price=min_raw,max_price=max_raw)
 
 
 def _product(where,value):
