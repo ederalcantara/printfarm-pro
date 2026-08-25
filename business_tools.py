@@ -11,29 +11,9 @@ from flask import Blueprint, Response, flash, redirect, render_template, request
 business_tools_bp = Blueprint('business_tools', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-SCHEMA = '''
-CREATE TABLE IF NOT EXISTS order_business (
- quote_id INTEGER PRIMARY KEY REFERENCES quotes(id) ON DELETE CASCADE,
- due_date DATE,
- delivery_method VARCHAR(30) NOT NULL DEFAULT 'pickup',
- delivery_address TEXT,
- tracking_code VARCHAR(120),
- delivery_status VARCHAR(30) NOT NULL DEFAULT 'pending',
- extra_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
- labor_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
- notes TEXT,
- updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-'''
 
 def db(): return psycopg2.connect(DATABASE_URL,cursor_factory=RealDictCursor)
-def ensure():
-    c=db()
-    try:
-        with c.cursor() as cur: cur.execute(SCHEMA)
-        c.commit()
-    finally:c.close()
-
+def ensure(): return
 def login_required(view):
     @wraps(view)
     def wrapped(*a,**k):
@@ -52,14 +32,32 @@ def calc_cost(q):
 @business_tools_bp.route('/business/<int:quote_id>',methods=['GET','POST'])
 @login_required
 def order_business(quote_id):
-    ensure(); c=db()
+    c=db()
     try:
         with c.cursor() as cur:
             if request.method=='POST':
-                cur.execute('''INSERT INTO order_business(quote_id,due_date,delivery_method,delivery_address,tracking_code,delivery_status,extra_cost,labor_cost,notes) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(quote_id) DO UPDATE SET due_date=EXCLUDED.due_date,delivery_method=EXCLUDED.delivery_method,delivery_address=EXCLUDED.delivery_address,tracking_code=EXCLUDED.tracking_code,delivery_status=EXCLUDED.delivery_status,extra_cost=EXCLUDED.extra_cost,labor_cost=EXCLUDED.labor_cost,notes=EXCLUDED.notes,updated_at=NOW()''',(quote_id,request.form.get('due_date') or None,request.form.get('delivery_method','pickup'),request.form.get('delivery_address'),request.form.get('tracking_code'),request.form.get('delivery_status','pending'),request.form.get('extra_cost') or 0,request.form.get('labor_cost') or 0,request.form.get('notes')))
+                new_delivery=request.form.get('delivery_status','pending')
+                cur.execute('SELECT delivery_status FROM order_business WHERE quote_id=%s FOR UPDATE',(quote_id,));old_business=cur.fetchone();old_delivery=old_business['delivery_status'] if old_business else None
+                cur.execute('''INSERT INTO order_business(quote_id,due_date,delivery_method,delivery_address,tracking_code,delivery_status,extra_cost,labor_cost,notes) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(quote_id) DO UPDATE SET due_date=EXCLUDED.due_date,delivery_method=EXCLUDED.delivery_method,delivery_address=EXCLUDED.delivery_address,tracking_code=EXCLUDED.tracking_code,delivery_status=EXCLUDED.delivery_status,extra_cost=EXCLUDED.extra_cost,labor_cost=EXCLUDED.labor_cost,notes=EXCLUDED.notes,updated_at=NOW()''',(quote_id,request.form.get('due_date') or None,request.form.get('delivery_method','pickup'),request.form.get('delivery_address'),request.form.get('tracking_code'),new_delivery,request.form.get('extra_cost') or 0,request.form.get('labor_cost') or 0,request.form.get('notes')))
+                if new_delivery=='delivered' and old_delivery!='delivered':
+                    cur.execute('SELECT * FROM customer_requests WHERE quote_id=%s FOR UPDATE',(quote_id,));r=cur.fetchone()
+                    if r and r.get('product_id') and int(r.get('reserved_stock_qty') or 0)>0:
+                        qty=int(r['reserved_stock_qty'])
+                        cur.execute('SELECT stock_qty,reserved_stock_qty FROM products WHERE id=%s FOR UPDATE',(r['product_id'],));product=cur.fetchone()
+                        if not product or int(product['stock_qty'] or 0)<qty:
+                            raise ValueError('Estoque pronto insuficiente para concluir a entrega.')
+                        cur.execute('UPDATE products SET stock_qty=stock_qty-%s,reserved_stock_qty=GREATEST(0,reserved_stock_qty-%s) WHERE id=%s',(qty,qty,r['product_id']))
+                        cur.execute('UPDATE customer_requests SET reserved_stock_qty=0,status=%s WHERE id=%s',('completed',r['id']))
+                        cur.execute("INSERT INTO inventory_movements(product_id,grams,movement_type,reference_type,reference_id,notes,product_qty,filament_g) VALUES(%s,0,'product_sale','quote',%s,'Baixa de estoque pronto na entrega',%s,0)",(r['product_id'],quote_id,-qty))
+                        cur.execute("INSERT INTO order_events(request_id,quote_id,event_type,details) VALUES(%s,%s,'delivered',%s)",(r['id'],quote_id,f'{qty} unidade(s) baixadas do estoque pronto'))
+                cur.execute("INSERT INTO audit_log(entity_type,entity_id,action,details,user_id) VALUES('quote',%s,'business_updated',%s,%s)",(quote_id,f'entrega={new_delivery}',session.get('user_id')))
                 c.commit(); flash('Financeiro, prazo e entrega atualizados.','success')
             cur.execute('''SELECT q.*,c.name customer_name,c.phone,c.email,f.purchase_cost,f.spool_weight_g,m.hourly_cost,b.due_date,b.delivery_method,b.delivery_address,b.tracking_code,b.delivery_status,b.extra_cost,b.labor_cost,b.notes business_notes FROM quotes q LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN filaments f ON f.id=q.filament_id LEFT JOIN machines m ON m.id=(SELECT machine_id FROM print_jobs WHERE quote_id=q.id ORDER BY id DESC LIMIT 1) LEFT JOIN order_business b ON b.quote_id=q.id WHERE q.id=%s''',(quote_id,)); q=cur.fetchone()
             if not q:return 'Orçamento não encontrado',404
+    except ValueError as exc:
+        c.rollback();flash(str(exc),'danger');return redirect(url_for('business_tools.order_business',quote_id=quote_id))
+    except Exception:
+        c.rollback();raise
     finally:c.close()
     material,machine,extra=calc_cost(q); total=float(q['total'] or 0); cost=material+machine+extra; profit=total-cost
     receipt=f"Legacy 3D Studio - Recibo\nOrçamento: {q['quote_number']}\nCliente: {q['customer_name'] or ''}\nValor: ${total:.2f}\nObrigado pela preferência."
@@ -69,7 +67,7 @@ def order_business(quote_id):
 @business_tools_bp.get('/business')
 @login_required
 def business_dashboard():
-    ensure(); c=db()
+    c=db()
     try:
         with c.cursor() as cur:
             cur.execute('''SELECT q.id,q.quote_number,q.title,q.total,q.currency,q.status,q.estimated_grams,q.actual_grams,q.print_hours,c.name customer_name,f.purchase_cost,f.spool_weight_g,b.due_date,b.delivery_status,b.extra_cost,b.labor_cost FROM quotes q LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN filaments f ON f.id=q.filament_id LEFT JOIN order_business b ON b.quote_id=q.id ORDER BY q.created_at DESC'''); rows=cur.fetchall()
@@ -81,10 +79,10 @@ def business_dashboard():
 @business_tools_bp.get('/backup.csv')
 @login_required
 def backup_csv():
-    ensure(); c=db(); out=io.StringIO(); w=csv.writer(out); w.writerow(['quote_number','cliente','projeto','status','valor','moeda','prazo','entrega'])
+    c=db();out=io.StringIO();w=csv.writer(out);w.writerow(['quote_number','cliente','projeto','status','valor','moeda','prazo','entrega'])
     try:
         with c.cursor() as cur:
             cur.execute('''SELECT q.quote_number,c.name,q.title,q.status,q.total,q.currency,b.due_date,b.delivery_status FROM quotes q LEFT JOIN customers c ON c.id=q.customer_id LEFT JOIN order_business b ON b.quote_id=q.id ORDER BY q.created_at''')
-            for r in cur.fetchall(): w.writerow(list(r.values()))
+            for r in cur.fetchall():w.writerow(list(r.values()))
     finally:c.close()
     return Response(out.getvalue(),mimetype='text/csv',headers={'Content-Disposition':'attachment; filename=legacy-backup-orcamentos.csv'})
