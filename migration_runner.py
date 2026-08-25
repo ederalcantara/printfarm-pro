@@ -8,11 +8,14 @@ MIGRATIONS_DIR = Path(__file__).with_name('migrations')
 
 
 def register_runtime_extensions():
-    """Register safety blueprints before the app starts serving requests."""
+    """Register runtime blueprints before the app starts serving requests."""
     from app import app
     from stock_safety import stock_safety_bp
+    from multicolor_stock import multicolor_stock_bp
     if stock_safety_bp.name not in app.blueprints:
         app.register_blueprint(stock_safety_bp)
+    if multicolor_stock_bp.name not in app.blueprints:
+        app.register_blueprint(multicolor_stock_bp)
 
 
 def run_migrations():
