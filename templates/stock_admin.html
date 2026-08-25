@@ -1,1 +1,139 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Estoque de filamentos · Sistema Legacy</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><style>body{background:#f5f6f8}.wrap{max-width:1400px;margin:auto;padding:28px}.card{border:1px solid #e6e8ed;border-radius:18px}.metric{font-size:20px;font-weight:800}.low{background:#fff7ed}</style></head><body><div class="wrap"><div class="d-flex justify-content-between align-items-center mb-4"><div><h2>Estoque de filamentos</h2><div class="text-secondary">Estoque físico, reservado e realmente disponível para novos trabalhos.</div></div><a class="btn btn-outline-dark" href="/">← Sistema</a></div>{% with messages=get_flashed_messages(with_categories=true) %}{% for cat,msg in messages %}<div class="alert alert-{{cat}}">{{msg}}</div>{% endfor %}{% endwith %}<div class="alert alert-light border mb-4"><strong>Regra:</strong> Disponível = Físico − Reservado. Ajustes manuais não podem reduzir o físico abaixo da quantidade já reservada.</div><div class="card mb-4"><div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Filamento</th><th>Físico</th><th>Reservado</th><th>Disponível</th><th>Mínimo</th><th>Custo</th><th>Ajustar físico</th></tr></thead><tbody>{% for f in filaments %}<tr class="{% if f.available_g <= f.min_g %}low{% endif %}"><td><strong>{{f.material}} · {{f.color}}</strong><div class="small text-secondary">{{f.brand or ''}}{% if f.location %} · {{f.location}}{% endif %}</div></td><td><div class="metric">{{'%.1f'|format(f.remaining_g)}} g</div></td><td><div class="metric">{{'%.1f'|format(f.reserved_g or 0)}} g</div></td><td><div class="metric">{{'%.1f'|format(f.available_g or 0)}} g</div></td><td>{{'%.1f'|format(f.min_g)}} g</td><td>{% if f.currency=='BRL' %}R${% else %}${% endif %} {{'%.2f'|format(f.purchase_cost or 0)}}</td><td><form class="d-flex gap-1" method="post" action="{{url_for('stock_safety.adjust_stock',filament_id=f.id)}}"><input class="form-control form-control-sm" style="width:105px" name="grams" type="number" step="0.01" placeholder="+/- g" required><button class="btn btn-sm btn-outline-dark">OK</button></form></td></tr>{% else %}<tr><td colspan="7" class="p-4 text-secondary">Nenhum filamento cadastrado.</td></tr>{% endfor %}</tbody></table></div></div><div class="card"><div class="p-3 border-bottom"><strong>Histórico de movimentações</strong></div><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Data</th><th>Filamento</th><th>Movimento</th><th>Gramas</th><th>Observação</th></tr></thead><tbody>{% for m in movements %}<tr><td>{{m.created_at.strftime('%m/%d/%Y %H:%M')}}</td><td>{{m.material}} · {{m.color}}</td><td>{{m.movement_type}}</td><td class="{% if m.grams<0 %}text-danger{% else %}text-success{% endif %}">{{m.grams}} g</td><td>{{m.notes or ''}}</td></tr>{% else %}<tr><td colspan="5" class="p-4 text-secondary">Sem movimentações.</td></tr>{% endfor %}</tbody></table></div></div></div></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Estoque de filamentos · Sistema Legacy</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body{background:#f5f6f8}
+    .wrap{max-width:1400px;margin:auto;padding:28px}
+    .card{border:1px solid #e6e8ed;border-radius:18px}
+    .metric{font-size:20px;font-weight:800}
+    .low{background:#fff7ed}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2>Estoque de filamentos</h2>
+      <div class="text-secondary">Estoque físico, reservado e realmente disponível para novos trabalhos.</div>
+    </div>
+    <a class="btn btn-outline-dark" href="/">← Sistema</a>
+  </div>
+
+  {% with messages=get_flashed_messages(with_categories=true) %}
+    {% for cat,msg in messages %}<div class="alert alert-{{cat}}">{{msg}}</div>{% endfor %}
+  {% endwith %}
+
+  <div class="card p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h5 class="mb-1">Adicionar novo filamento</h5>
+        <div class="small text-secondary">Cadastre uma nova cor, marca ou material diretamente no estoque.</div>
+      </div>
+    </div>
+    <form method="post" action="{{url_for('stock_safety.add_filament')}}">
+      <div class="row g-3">
+        <div class="col-md-2">
+          <label class="form-label">Material *</label>
+          <input class="form-control" name="material" placeholder="PLA, PETG, ABS..." required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Cor *</label>
+          <input class="form-control" name="color" placeholder="Azul, Rosa, Dourado..." required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Marca</label>
+          <input class="form-control" name="brand" placeholder="Bambu, Inland...">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Estoque inicial (g)</label>
+          <input class="form-control" type="number" min="0" step="0.01" name="remaining_g" value="0" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Peso do rolo (g)</label>
+          <input class="form-control" type="number" min="0.01" step="0.01" name="spool_weight_g" value="1000" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Mínimo (g)</label>
+          <input class="form-control" type="number" min="0" step="0.01" name="min_g" value="100" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Custo</label>
+          <input class="form-control" type="number" min="0" step="0.01" name="purchase_cost" value="0">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Moeda</label>
+          <select class="form-select" name="currency"><option value="USD">USD</option><option value="BRL">BRL</option></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Fornecedor</label>
+          <input class="form-control" name="supplier" placeholder="Opcional">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Localização</label>
+          <input class="form-control" name="location" placeholder="Prateleira, caixa...">
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+          <button class="btn btn-dark w-100">+ Adicionar ao estoque</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="alert alert-light border mb-4"><strong>Regra:</strong> Disponível = Físico − Reservado. Ajustes manuais não podem reduzir o físico abaixo da quantidade já reservada.</div>
+
+  <div class="card mb-4">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead><tr><th>Filamento</th><th>Físico</th><th>Reservado</th><th>Disponível</th><th>Mínimo</th><th>Custo</th><th>Ajustar físico</th></tr></thead>
+        <tbody>
+        {% for f in filaments %}
+          <tr class="{% if f.available_g <= f.min_g %}low{% endif %}">
+            <td><strong>{{f.material}} · {{f.color}}</strong><div class="small text-secondary">{{f.brand or ''}}{% if f.location %} · {{f.location}}{% endif %}</div></td>
+            <td><div class="metric">{{'%.1f'|format(f.remaining_g)}} g</div></td>
+            <td><div class="metric">{{'%.1f'|format(f.reserved_g or 0)}} g</div></td>
+            <td><div class="metric">{{'%.1f'|format(f.available_g or 0)}} g</div></td>
+            <td>{{'%.1f'|format(f.min_g)}} g</td>
+            <td>{% if f.currency=='BRL' %}R${% else %}${% endif %} {{'%.2f'|format(f.purchase_cost or 0)}}</td>
+            <td>
+              <form class="d-flex gap-1" method="post" action="{{url_for('stock_safety.adjust_stock',filament_id=f.id)}}">
+                <input class="form-control form-control-sm" style="width:105px" name="grams" type="number" step="0.01" placeholder="+/- g" required>
+                <button class="btn btn-sm btn-outline-dark">OK</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="p-4 text-secondary">Nenhum filamento cadastrado.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="p-3 border-bottom"><strong>Histórico de movimentações</strong></div>
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead><tr><th>Data</th><th>Filamento</th><th>Movimento</th><th>Gramas</th><th>Observação</th></tr></thead>
+        <tbody>
+        {% for m in movements %}
+          <tr>
+            <td>{{m.created_at.strftime('%m/%d/%Y %H:%M')}}</td>
+            <td>{{m.material}} · {{m.color}}</td>
+            <td>{{m.movement_type}}</td>
+            <td class="{% if m.grams<0 %}text-danger{% else %}text-success{% endif %}">{{m.grams}} g</td>
+            <td>{{m.notes or ''}}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="p-4 text-secondary">Sem movimentações.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>

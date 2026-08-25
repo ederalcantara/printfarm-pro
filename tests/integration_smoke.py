@@ -62,6 +62,20 @@ def main():
     assert r.status_code in (302,303) and '/stock-admin' in r.headers.get('Location','')
     assert client.get('/stock-admin').status_code==200
 
+    # 1b. Nova cor/material pode ser cadastrada diretamente no estoque seguro.
+    r=client.post('/stock-admin/add',data={
+        'material':'PETG','color':'Turquesa Teste','brand':'Marca Teste',
+        'remaining_g':'750','spool_weight_g':'1000','purchase_cost':'24.50',
+        'currency':'USD','min_g':'80','supplier':'Fornecedor Teste','location':'Prateleira T'
+    },follow_redirects=False)
+    assert r.status_code in (302,303) and '/stock-admin' in r.headers.get('Location','')
+    new_filament_id=scalar("SELECT id FROM filaments WHERE material='PETG' AND color='Turquesa Teste' ORDER BY id DESC LIMIT 1")
+    assert new_filament_id
+    assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(new_filament_id,)))==750.0
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(new_filament_id,)))==0.0
+    assert int(scalar("SELECT COUNT(*) FROM inventory_movements WHERE filament_id=%s AND movement_type='initial_stock'",(new_filament_id,)))==1
+    assert b'Turquesa Teste' in client.get('/stock-admin').data
+
     # 2. Peso suspeito no fluxo legado continua bloqueado.
     before_batches=int(scalar('SELECT COUNT(*) FROM production_batches'))
     r=client.post('/production/stock/create',data={'product_id':product_id,'quantity':'1','filament_id':filament_id,'grams_per_unit':'0.77'},follow_redirects=False)
