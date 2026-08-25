@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - legacy-core-product-order-inventory
+      - multicolor-stock-production
 
 jobs:
   python-and-templates:
@@ -20,7 +21,7 @@ jobs:
       - name: Compile Python
         run: |
           python -m py_compile \
-            app.py wsgi.py migration_runner.py operations.py catalog_admin.py stock_safety.py \
+            app.py wsgi.py migration_runner.py operations.py catalog_admin.py stock_safety.py multicolor_stock.py \
             public_site.py production.py online_requests.py customer_tools.py business_tools.py \
             customer_portal.py payments.py quote_flow.py machine_admin.py marketing.py calculator.py data_cleanup.py \
             tests/integration_smoke.py
