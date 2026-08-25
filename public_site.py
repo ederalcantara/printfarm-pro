@@ -1,38 +1,30 @@
 import os
 
 import psycopg2
-from flask import Blueprint, render_template, session, redirect, request, current_app
+from flask import Blueprint, render_template, session, redirect, request, current_app, abort
 from psycopg2.extras import RealDictCursor
 
 public_site_bp = Blueprint('public_site', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 
-def _ensure_public_columns(conn):
-    with conn.cursor() as cur:
-        cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_data BYTEA")
-        cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_content_type VARCHAR(120)")
-        cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_name VARCHAR(255)")
-        cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS collection VARCHAR(30) NOT NULL DEFAULT 'catalog'")
-        cur.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 1000")
-        cur.execute("UPDATE products SET collection='exclusive' WHERE lower(COALESCE(sku,'')) ~ '^legacy[ _-]*0*(1[0-4]|[1-9])$' AND collection='catalog'")
-    conn.commit()
-
-
-def _products():
+def _products(search=''):
     result={'exclusive':[],'catalog':[]}
     if not DATABASE_URL:
         current_app.logger.error('Public catalog: DATABASE_URL is not configured'); return result
     conn=None
     try:
         conn=psycopg2.connect(DATABASE_URL,cursor_factory=RealDictCursor)
-        _ensure_public_columns(conn)
         with conn.cursor() as cur:
-            cur.execute('''SELECT id,sku,name,description,price,currency,collection,display_order,
-                                  image_data IS NOT NULL AS has_image
-                           FROM products
-                           WHERE active IS TRUE
-                           ORDER BY display_order ASC, created_at DESC, id DESC''')
+            params=[]
+            where='WHERE active IS TRUE'
+            if search:
+                where += " AND (name ILIKE %s OR COALESCE(sku,'') ILIKE %s OR COALESCE(description,'') ILIKE %s)"
+                term=f'%{search}%';params=[term,term,term]
+            cur.execute(f'''SELECT id,sku,name,description,price,currency,collection,display_order,stock_qty,
+                                  fulfillment_mode,lead_time_days,image_data IS NOT NULL AS has_image
+                           FROM products {where}
+                           ORDER BY display_order ASC, created_at DESC, id DESC''',params)
             for p in cur.fetchall():
                 result['exclusive' if p.get('collection')=='exclusive' else 'catalog'].append(p)
         return result
@@ -54,8 +46,23 @@ def public_main_domain():
 
 @public_site_bp.get('/home')
 def public_home():
-    groups=_products()
-    return render_template('public_home.html',exclusive_products=groups['exclusive'],catalog_products=groups['catalog'],whatsapp_url=_whatsapp_url())
+    search=request.args.get('q','').strip()
+    groups=_products(search)
+    return render_template('public_home.html',exclusive_products=groups['exclusive'],catalog_products=groups['catalog'],whatsapp_url=_whatsapp_url(),search=search)
+
+
+@public_site_bp.get('/produto/<int:product_id>')
+def product_detail(product_id):
+    c=psycopg2.connect(DATABASE_URL,cursor_factory=RealDictCursor)
+    try:
+        with c.cursor() as cur:
+            cur.execute('''SELECT id,sku,name,description,price,currency,stock_qty,fulfillment_mode,lead_time_days,
+                                  image_data IS NOT NULL AS has_image
+                           FROM products WHERE id=%s AND active=TRUE''',(product_id,))
+            product=cur.fetchone()
+    finally:c.close()
+    if not product: abort(404)
+    return render_template('public_product.html',product=product,whatsapp_url=_whatsapp_url())
 
 
 @public_site_bp.get('/admin')
