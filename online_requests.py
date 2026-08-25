@@ -55,9 +55,17 @@ def update_status(request_id):
     notes=request.form.get('admin_notes','').strip();c=db()
     try:
         with c.cursor() as cur:
+            cur.execute('SELECT * FROM customer_requests WHERE id=%s FOR UPDATE',(request_id,));old=cur.fetchone()
+            if not old:return 'Pedido não encontrado.',404
+            if status=='rejected' and old.get('product_id') and int(old.get('reserved_stock_qty') or 0)>0:
+                qty=int(old['reserved_stock_qty'])
+                cur.execute('UPDATE products SET reserved_stock_qty=GREATEST(0,reserved_stock_qty-%s) WHERE id=%s',(qty,old['product_id']))
+                cur.execute('UPDATE customer_requests SET reserved_stock_qty=0 WHERE id=%s',(request_id,))
+                cur.execute("INSERT INTO order_events(request_id,event_type,details) VALUES(%s,'finished_stock_released',%s)",(request_id,f'{qty} unidade(s) liberadas'))
             cur.execute('UPDATE customer_requests SET status=%s,admin_notes=%s WHERE id=%s',(status,notes,request_id))
             cur.execute("INSERT INTO order_events(request_id,event_type,details) VALUES(%s,'status_changed',%s)",(request_id,status))
         c.commit()
+    except Exception:c.rollback();raise
     finally:c.close()
     flash('Pedido atualizado.','success');return redirect(url_for('online.request_detail',request_id=request_id))
 
