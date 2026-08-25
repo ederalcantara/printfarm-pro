@@ -22,7 +22,8 @@ jobs:
           python -m py_compile \
             app.py wsgi.py migration_runner.py operations.py catalog_admin.py \
             public_site.py production.py online_requests.py customer_tools.py business_tools.py \
-            customer_portal.py payments.py quote_flow.py machine_admin.py marketing.py calculator.py data_cleanup.py
+            customer_portal.py payments.py quote_flow.py machine_admin.py marketing.py calculator.py data_cleanup.py \
+            tests/integration_smoke.py
       - name: Parse Jinja templates
         run: |
           python - <<'PY'
@@ -39,3 +40,32 @@ jobs:
               raise SystemExit('\n'.join(failures))
           print('All templates parsed successfully.')
           PY
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: legacy
+          POSTGRES_PASSWORD: legacy
+          POSTGRES_DB: legacy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U legacy -d legacy_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql://legacy:legacy@localhost:5432/legacy_test
+      SECRET_KEY: integration-test-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run PostgreSQL integration smoke test
+        run: python tests/integration_smoke.py
