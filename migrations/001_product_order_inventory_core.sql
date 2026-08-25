@@ -23,6 +23,7 @@ END $$;
 ALTER TABLE filaments ADD COLUMN IF NOT EXISTS reserved_g NUMERIC(12,2) NOT NULL DEFAULT 0;
 
 -- Evolui a tabela histórica já existente sem quebrar os movimentos antigos.
+ALTER TABLE inventory_movements ALTER COLUMN filament_id DROP NOT NULL;
 ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS product_id INTEGER REFERENCES products(id) ON DELETE SET NULL;
 ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL;
 ALTER TABLE inventory_movements ADD COLUMN IF NOT EXISTS product_qty INTEGER NOT NULL DEFAULT 0;
