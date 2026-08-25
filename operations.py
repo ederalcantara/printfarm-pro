@@ -6,6 +6,11 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
 
+import customer_portal
+
+# customer_portal historically altered tables on every public request. Migrations now own schema changes.
+customer_portal.ensure = lambda: None
+
 operations_bp = Blueprint('operations', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
 
@@ -182,6 +187,38 @@ def order_detail(request_id):
     finally:
         c.close()
     return render_template('order_detail.html', item=item, files=files, events=events, batches=batches)
+
+
+@operations_bp.get('/reports/sources')
+@login_required
+def source_report():
+    c=db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''SELECT COALESCE(NULLIF(r.source,''),'unknown') AS source,
+                                  COUNT(*) AS requests,
+                                  COUNT(r.quote_id) AS converted,
+                                  COALESCE(SUM(CASE WHEN q.status <> 'canceled' THEN q.total ELSE 0 END),0) AS revenue
+                           FROM customer_requests r
+                           LEFT JOIN quotes q ON q.id=r.quote_id
+                           GROUP BY COALESCE(NULLIF(r.source,''),'unknown')
+                           ORDER BY revenue DESC,requests DESC''')
+            rows=cur.fetchall()
+    finally:c.close()
+    return render_template('source_report.html',rows=rows)
+
+
+@operations_bp.get('/audit')
+@login_required
+def audit_log():
+    c=db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''SELECT a.*,u.full_name AS user_name FROM audit_log a
+                           LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC LIMIT 300''')
+            rows=cur.fetchall()
+    finally:c.close()
+    return render_template('audit_log.html',rows=rows)
 
 
 @operations_bp.get('/production/stock')
