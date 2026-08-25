@@ -1,0 +1,41 @@
+name: Quality Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - legacy-core-product-order-inventory
+
+jobs:
+  python-and-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python
+        run: |
+          python -m py_compile \
+            app.py wsgi.py migration_runner.py operations.py catalog_admin.py \
+            public_site.py production.py online_requests.py customer_tools.py business_tools.py \
+            customer_portal.py payments.py quote_flow.py machine_admin.py marketing.py calculator.py data_cleanup.py
+      - name: Parse Jinja templates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from jinja2 import Environment
+          env = Environment()
+          failures = []
+          for path in Path('templates').rglob('*.html'):
+              try:
+                  env.parse(path.read_text(encoding='utf-8'))
+              except Exception as exc:
+                  failures.append(f'{path}: {exc}')
+          if failures:
+              raise SystemExit('\n'.join(failures))
+          print('All templates parsed successfully.')
+          PY
