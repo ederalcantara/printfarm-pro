@@ -24,11 +24,9 @@ def scalar(sql,params=()):
 
 
 def main():
-    # Simula uma instalação existente do Legacy e então aplica as migrações novas.
     app_module.ensure_schema()
     run_migrations()
 
-    # Importar wsgi registra todos os blueprints após o schema existir.
     import wsgi  # noqa: F401
     flask_app=app_module.app
     flask_app.config.update(TESTING=True,SECRET_KEY='integration-test-secret')
@@ -54,24 +52,39 @@ def main():
     with client.session_transaction() as sess:
         sess['user_id']=user_id;sess['full_name']='Integration Tester'
 
-    # 1. Painéis principais carregam.
+    # 1. Painéis principais e estoque seguro carregam.
     assert client.get('/catalog/manage').status_code==200
     assert client.get('/orders').status_code==200
     assert client.get('/production/stock').status_code==200
+    r=client.get('/?tab=stock',follow_redirects=False)
+    assert r.status_code in (302,303) and '/stock-admin' in r.headers.get('Location','')
+    assert client.get('/stock-admin').status_code==200
 
-    # 2. Produção para estoque: reserva -> conclusão -> estoque pronto.
+    # 2. Peso suspeito é bloqueado antes de criar lote.
+    before_batches=int(scalar('SELECT COUNT(*) FROM production_batches'))
+    r=client.post('/production/stock/create',data={'product_id':product_id,'quantity':'1','filament_id':filament_id,'grams_per_unit':'0.77'},follow_redirects=False)
+    assert r.status_code in (302,303)
+    assert int(scalar('SELECT COUNT(*) FROM production_batches'))==before_batches
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==0.0
+
+    # 3. Produção válida reserva filamento; ajuste manual não pode consumir reserva.
     r=client.post('/production/stock/create',data={'product_id':product_id,'quantity':'2','filament_id':filament_id,'grams_per_unit':'100'},follow_redirects=False)
     assert r.status_code in (302,303)
     batch_id=scalar("SELECT id FROM production_batches WHERE product_id=%s ORDER BY id DESC LIMIT 1",(product_id,))
     assert batch_id
     assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==200.0
+    r=client.post(f'/stock-admin/{filament_id}/adjust',data={'grams':'-900'},follow_redirects=False)
+    assert r.status_code in (302,303)
+    assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==1000.0
+
+    # 4. Conclusão do lote consome filamento e adiciona estoque pronto.
     r=client.post(f'/production/stock/{batch_id}/complete',data={'actual_grams':'190'},follow_redirects=False)
     assert r.status_code in (302,303)
     assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==0.0
     assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==810.0
     assert int(scalar('SELECT stock_qty FROM products WHERE id=%s',(product_id,)))==5
 
-    # 3. Pedido público de pronta entrega reserva uma unidade.
+    # 5. Pedido público de pronta entrega reserva uma unidade.
     r=client.get(f'/request-quote?product={product_id}&source=integration_test')
     assert r.status_code==200
     r=client.post('/request-quote',data={'mode':'catalog','product_id':str(product_id),'name':'Comprador Teste','email':'buyer@example.com','phone':'5559990000','quantity':'1'},follow_redirects=False)
@@ -81,12 +94,12 @@ def main():
     assert int(scalar('SELECT reserved_stock_qty FROM customer_requests WHERE id=%s',(request_id,)))==1
     assert int(scalar('SELECT reserved_stock_qty FROM products WHERE id=%s',(product_id,)))==1
 
-    # 4. Rejeição libera a reserva pronta.
+    # 6. Rejeição libera a reserva pronta.
     r=client.post(f'/online-requests/{request_id}/status',data={'status':'rejected','admin_notes':'teste'},follow_redirects=False)
     assert r.status_code in (302,303)
     assert int(scalar('SELECT reserved_stock_qty FROM products WHERE id=%s',(product_id,)))==0
 
-    # 5. Fila de impressão: reserva filamento -> início converte em consumo -> conclusão ajusta consumo real.
+    # 7. Fila de impressão: reserva -> consumo -> ajuste real.
     c=conn()
     try:
         with c.cursor() as cur:
@@ -110,7 +123,7 @@ def main():
     assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==before-90.0
     assert scalar('SELECT status FROM machines WHERE id=%s',(machine_id,))=='available'
 
-    # 6. Migrações são idempotentes.
+    # 8. Migrações são idempotentes e extensões já registradas não duplicam.
     run_migrations()
     assert int(scalar('SELECT COUNT(*) FROM schema_migrations'))>=2
 
