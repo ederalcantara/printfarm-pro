@@ -85,6 +85,53 @@ def stock_admin():
     return render_template('stock_admin.html', filaments=filaments, movements=movements)
 
 
+@stock_safety_bp.post('/stock-admin/add')
+@login_required
+def add_filament():
+    material = (request.form.get('material') or '').strip()
+    color = (request.form.get('color') or '').strip()
+    brand = (request.form.get('brand') or '').strip() or None
+    supplier = (request.form.get('supplier') or '').strip() or None
+    location = (request.form.get('location') or '').strip() or None
+    currency = (request.form.get('currency') or 'USD').strip().upper()
+    remaining = d(request.form.get('remaining_g'))
+    spool_weight = d(request.form.get('spool_weight_g'), '1000')
+    purchase_cost = d(request.form.get('purchase_cost'))
+    min_g = d(request.form.get('min_g'), '100')
+
+    if not material or not color:
+        flash('Informe o material e a cor do novo filamento.', 'danger')
+        return redirect(url_for('stock_safety.stock_admin'))
+    if remaining < 0 or spool_weight <= 0 or purchase_cost < 0 or min_g < 0:
+        flash('Confira peso, estoque, custo e mínimo. Os valores não podem ser negativos e o peso do rolo deve ser maior que zero.', 'danger')
+        return redirect(url_for('stock_safety.stock_admin'))
+    if currency not in ('USD', 'BRL'):
+        currency = 'USD'
+
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''INSERT INTO filaments
+                           (brand,material,color,spool_weight_g,remaining_g,purchase_cost,currency,supplier,min_g,location)
+                           VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',
+                        (brand, material, color, spool_weight, remaining, purchase_cost, currency, supplier, min_g, location))
+            filament_id = cur.fetchone()['id']
+            if remaining > 0:
+                cur.execute('''INSERT INTO inventory_movements
+                               (filament_id,grams,movement_type,reference_type,reference_id,notes)
+                               VALUES(%s,%s,'initial_stock','filament',%s,%s)''',
+                            (filament_id, remaining, filament_id, 'Estoque inicial do novo filamento'))
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+    flash(f'Filamento {material} · {color} adicionado ao estoque.', 'success')
+    return redirect(url_for('stock_safety.stock_admin'))
+
+
 @stock_safety_bp.post('/stock-admin/<int:filament_id>/adjust')
 @login_required
 def adjust_stock(filament_id):
