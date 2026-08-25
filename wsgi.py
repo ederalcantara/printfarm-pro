@@ -7,6 +7,7 @@ from psycopg2.extras import RealDictCursor
 from flask import request
 
 from app import app
+from migration_runner import run_migrations
 from calculator import calculator_bp
 from customer_portal import portal_bp
 from online_requests import online_bp
@@ -20,7 +21,9 @@ from payments import payments_bp, ensure_payment_schema
 from business_tools import business_tools_bp
 from customer_tools import customer_tools_bp
 from public_site import public_site_bp
+from operations import operations_bp
 
+run_migrations()
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
 app.register_blueprint(online_bp)
@@ -34,6 +37,7 @@ app.register_blueprint(payments_bp)
 app.register_blueprint(business_tools_bp)
 app.register_blueprint(customer_tools_bp)
 app.register_blueprint(public_site_bp)
+app.register_blueprint(operations_bp)
 ensure_catalog_schema()
 ensure_payment_schema()
 
@@ -76,7 +80,7 @@ def _payment_badge(row):
 def inject_sidebar_links(response):
     if 'text/html' not in response.headers.get('Content-Type',''):return response
     page=response.get_data(as_text=True);marker='<a class="nav-link" href="/catalog" target="_blank">Catálogo público ↗</a>';additions=''
-    for href,label in [('/online-requests','Pedidos Online'),('/sales-flow','Fluxo Comercial'),('/printing','Impressão'),('/business','Financeiro / Entregas'),('/marketing','Marketing / Instagram'),('/calculator','Calculadora'),('/admin/cleanup','Limpar dados de teste')]:
+    for href,label in [('/orders','Pedidos'),('/online-requests','Pedidos Online'),('/sales-flow','Fluxo Comercial'),('/printing','Impressão'),('/production/stock','Produzir para Estoque'),('/business','Financeiro / Entregas'),('/marketing','Marketing / Instagram'),('/calculator','Calculadora'),('/admin/cleanup','Limpar dados de teste')]:
         if f'href="{href}"' not in page:additions+=f'<a class="nav-link" href="{href}">{label}</a>\n    '
     if marker in page and additions:page=page.replace(marker,additions+marker,1)
     machine_title='<div class="section-title">Máquinas</div>'
