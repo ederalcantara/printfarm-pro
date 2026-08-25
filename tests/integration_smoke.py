@@ -38,6 +38,8 @@ def main():
             user_id=cur.fetchone()['id']
             cur.execute("INSERT INTO filaments(material,color,remaining_g,purchase_cost,spool_weight_g) VALUES('PLA','Branco',1000,20,1000) RETURNING id")
             filament_id=cur.fetchone()['id']
+            cur.execute("INSERT INTO filaments(material,color,remaining_g,purchase_cost,spool_weight_g) VALUES('PLA','Preto',500,20,1000) RETURNING id")
+            black_id=cur.fetchone()['id']
             cur.execute("INSERT INTO machines(name,status) VALUES('X1C Test','available') RETURNING id")
             machine_id=cur.fetchone()['id']
             cur.execute("""INSERT INTO products(sku,name,description,stock_qty,price,currency,filament_id,grams_per_unit,active,fulfillment_mode,stock_min_qty,lead_time_days,slug)
@@ -60,14 +62,14 @@ def main():
     assert r.status_code in (302,303) and '/stock-admin' in r.headers.get('Location','')
     assert client.get('/stock-admin').status_code==200
 
-    # 2. Peso suspeito é bloqueado antes de criar lote.
+    # 2. Peso suspeito no fluxo legado continua bloqueado.
     before_batches=int(scalar('SELECT COUNT(*) FROM production_batches'))
     r=client.post('/production/stock/create',data={'product_id':product_id,'quantity':'1','filament_id':filament_id,'grams_per_unit':'0.77'},follow_redirects=False)
     assert r.status_code in (302,303)
     assert int(scalar('SELECT COUNT(*) FROM production_batches'))==before_batches
     assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==0.0
 
-    # 3. Produção válida reserva filamento; ajuste manual não pode consumir reserva.
+    # 3. Fluxo legado válido permanece compatível.
     r=client.post('/production/stock/create',data={'product_id':product_id,'quantity':'2','filament_id':filament_id,'grams_per_unit':'100'},follow_redirects=False)
     assert r.status_code in (302,303)
     batch_id=scalar("SELECT id FROM production_batches WHERE product_id=%s ORDER BY id DESC LIMIT 1",(product_id,))
@@ -76,15 +78,89 @@ def main():
     r=client.post(f'/stock-admin/{filament_id}/adjust',data={'grams':'-900'},follow_redirects=False)
     assert r.status_code in (302,303)
     assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==1000.0
-
-    # 4. Conclusão do lote consome filamento e adiciona estoque pronto.
     r=client.post(f'/production/stock/{batch_id}/complete',data={'actual_grams':'190'},follow_redirects=False)
     assert r.status_code in (302,303)
     assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==0.0
     assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==810.0
     assert int(scalar('SELECT stock_qty FROM products WHERE id=%s',(product_id,)))==5
 
-    # 5. Pedido público de pronta entrega reserva uma unidade.
+    # 4. Multicor: duas cores são reservadas separadamente e cancelar devolve ambas.
+    r=client.post('/production/stock/create-multicolor',data={
+        'product_id':str(product_id),'quantity':'1',
+        'material_filament_id':[str(filament_id),str(black_id)],
+        'material_grams_per_unit':['70','30']
+    },follow_redirects=False)
+    assert r.status_code in (302,303)
+    multi_id=scalar("SELECT id FROM production_batches WHERE product_id=%s ORDER BY id DESC LIMIT 1",(product_id,))
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==70.0
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(black_id,)))==30.0
+    assert int(scalar('SELECT COUNT(*) FROM production_batch_materials WHERE batch_id=%s',(multi_id,)))==2
+    r=client.post(f'/production/stock/{multi_id}/cancel-multicolor',follow_redirects=False)
+    assert r.status_code in (302,303)
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==0.0
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(black_id,)))==0.0
+    assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==810.0
+    assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(black_id,)))==500.0
+
+    # 5. Uma cor de detalhe pode ter menos de 1 g, desde que o peso total da peça seja válido.
+    r=client.post('/production/stock/create-multicolor',data={
+        'product_id':str(product_id),'quantity':'1',
+        'material_filament_id':[str(filament_id),str(black_id)],
+        'material_grams_per_unit':['99.5','0.5']
+    },follow_redirects=False)
+    assert r.status_code in (302,303)
+    accent_id=scalar("SELECT id FROM production_batches WHERE product_id=%s ORDER BY id DESC LIMIT 1",(product_id,))
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==99.5
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(black_id,)))==0.5
+    r=client.post(f'/production/stock/{accent_id}/cancel-multicolor',follow_redirects=False)
+    assert r.status_code in (302,303)
+
+    # 6. Multicor concluído consome cada cor pelo valor real e adiciona a peça uma única vez.
+    r=client.post('/production/stock/create-multicolor',data={
+        'product_id':str(product_id),'quantity':'1',
+        'material_filament_id':[str(filament_id),str(black_id)],
+        'material_grams_per_unit':['70','30']
+    },follow_redirects=False)
+    assert r.status_code in (302,303)
+    multi_id=scalar("SELECT id FROM production_batches WHERE product_id=%s ORDER BY id DESC LIMIT 1",(product_id,))
+    c=conn()
+    try:
+        with c.cursor() as cur:
+            cur.execute('SELECT id,filament_id FROM production_batch_materials WHERE batch_id=%s ORDER BY id',(multi_id,))
+            mats=cur.fetchall()
+    finally:c.close()
+    actual_data={}
+    for m in mats:
+        actual_data[f"actual_material_{m['id']}"]='65' if m['filament_id']==filament_id else '35'
+    r=client.post(f'/production/stock/{multi_id}/complete-multicolor',data=actual_data,follow_redirects=False)
+    assert r.status_code in (302,303)
+    assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==745.0
+    assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(black_id,)))==465.0
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(filament_id,)))==0.0
+    assert float(scalar('SELECT reserved_g FROM filaments WHERE id=%s',(black_id,)))==0.0
+    assert int(scalar('SELECT stock_qty FROM products WHERE id=%s',(product_id,)))==6
+
+    # 7. Lote histórico inválido pode ser revertido sem apagar o histórico.
+    c=conn()
+    try:
+        with c.cursor() as cur:
+            cur.execute('UPDATE filaments SET remaining_g=remaining_g-0.77 WHERE id=%s',(black_id,))
+            cur.execute('UPDATE products SET stock_qty=stock_qty+1 WHERE id=%s',(product_id,))
+            cur.execute("""INSERT INTO production_batches(product_id,filament_id,mode,quantity,grams_per_unit,reserved_g,consumed_g,status,invalid_reason,completed_at)
+                         VALUES(%s,%s,'stock',1,0.77,0.77,0.77,'completed','Peso de teste inválido',NOW()) RETURNING id""",(product_id,black_id))
+            invalid_id=cur.fetchone()['id']
+            cur.execute('''INSERT INTO production_batch_materials(batch_id,filament_id,grams_per_unit,reserved_g,consumed_g)
+                           VALUES(%s,%s,0.77,0.77,0.77)''',(invalid_id,black_id))
+        c.commit()
+    finally:c.close()
+    before_black=float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(black_id,)))
+    r=client.post(f'/production/stock/{invalid_id}/invalidate',data={'reason':'teste revertido'},follow_redirects=False)
+    assert r.status_code in (302,303)
+    assert scalar('SELECT status FROM production_batches WHERE id=%s',(invalid_id,))=='invalidated'
+    assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(black_id,)))==before_black+0.77
+    assert int(scalar('SELECT stock_qty FROM products WHERE id=%s',(product_id,)))==6
+
+    # 8. Pedido público de pronta entrega reserva uma unidade.
     r=client.get(f'/request-quote?product={product_id}&source=integration_test')
     assert r.status_code==200
     r=client.post('/request-quote',data={'mode':'catalog','product_id':str(product_id),'name':'Comprador Teste','email':'buyer@example.com','phone':'5559990000','quantity':'1'},follow_redirects=False)
@@ -94,12 +170,12 @@ def main():
     assert int(scalar('SELECT reserved_stock_qty FROM customer_requests WHERE id=%s',(request_id,)))==1
     assert int(scalar('SELECT reserved_stock_qty FROM products WHERE id=%s',(product_id,)))==1
 
-    # 6. Rejeição libera a reserva pronta.
+    # 9. Rejeição libera a reserva pronta.
     r=client.post(f'/online-requests/{request_id}/status',data={'status':'rejected','admin_notes':'teste'},follow_redirects=False)
     assert r.status_code in (302,303)
     assert int(scalar('SELECT reserved_stock_qty FROM products WHERE id=%s',(product_id,)))==0
 
-    # 7. Fila de impressão: reserva -> consumo -> ajuste real.
+    # 10. Fila de impressão: reserva -> consumo -> ajuste real.
     c=conn()
     try:
         with c.cursor() as cur:
@@ -123,9 +199,9 @@ def main():
     assert float(scalar('SELECT remaining_g FROM filaments WHERE id=%s',(filament_id,)))==before-90.0
     assert scalar('SELECT status FROM machines WHERE id=%s',(machine_id,))=='available'
 
-    # 8. Migrações são idempotentes e extensões já registradas não duplicam.
+    # 11. Migrações são idempotentes.
     run_migrations()
-    assert int(scalar('SELECT COUNT(*) FROM schema_migrations'))>=2
+    assert int(scalar('SELECT COUNT(*) FROM schema_migrations'))>=3
 
     print('Integration smoke tests passed.')
 
