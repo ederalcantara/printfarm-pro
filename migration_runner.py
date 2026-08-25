@@ -7,8 +7,17 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 MIGRATIONS_DIR = Path(__file__).with_name('migrations')
 
 
+def register_runtime_extensions():
+    """Register safety blueprints before the app starts serving requests."""
+    from app import app
+    from stock_safety import stock_safety_bp
+    if stock_safety_bp.name not in app.blueprints:
+        app.register_blueprint(stock_safety_bp)
+
+
 def run_migrations():
     """Apply each versioned SQL migration once at application startup."""
+    register_runtime_extensions()
     if not DATABASE_URL or not MIGRATIONS_DIR.exists():
         return
     conn = psycopg2.connect(DATABASE_URL)
