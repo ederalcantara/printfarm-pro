@@ -6,7 +6,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import request
 
-from app import app
+from app import app, ensure_schema
 from migration_runner import run_migrations
 from calculator import calculator_bp
 from customer_portal import portal_bp
@@ -23,6 +23,7 @@ from customer_tools import customer_tools_bp
 from public_site import public_site_bp
 from operations import operations_bp
 
+ensure_schema()
 run_migrations()
 app.register_blueprint(calculator_bp)
 app.register_blueprint(portal_bp)
