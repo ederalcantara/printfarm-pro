@@ -4,7 +4,7 @@ from functools import wraps
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
 
 operations_bp = Blueprint('operations', __name__)
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -28,6 +28,99 @@ def login_required(view):
             return redirect(url_for('login'))
         return view(*args, **kwargs)
     return wrapped
+
+
+@operations_bp.before_app_request
+def protect_public_catalog_stock():
+    """Track campaign source and reserve finished stock around the legacy public portal."""
+    if request.path != '/request-quote':
+        return None
+    if request.method == 'GET':
+        session['_legacy_order_source'] = {
+            'source': (request.args.get('source') or request.args.get('utm_source') or 'catalog')[:40],
+            'utm_source': (request.args.get('utm_source') or '')[:120],
+            'utm_medium': (request.args.get('utm_medium') or '')[:120],
+            'utm_campaign': (request.args.get('utm_campaign') or '')[:180],
+        }
+        return None
+    if request.method != 'POST':
+        return None
+
+    meta = session.get('_legacy_order_source') or {'source':'catalog','utm_source':'','utm_medium':'','utm_campaign':''}
+    g.legacy_order_meta = meta
+    g.legacy_stock_reservation = None
+    if request.form.get('mode') != 'catalog':
+        return None
+    product_id = request.form.get('product_id')
+    try:
+        quantity = max(int(request.form.get('quantity') or 1), 1)
+    except ValueError:
+        quantity = 1
+    if not product_id:
+        return None
+
+    c=db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''SELECT id,name,stock_qty,reserved_stock_qty,fulfillment_mode
+                           FROM products WHERE id=%s AND active=TRUE FOR UPDATE''',(product_id,))
+            product=cur.fetchone()
+            if not product:
+                return None
+            available=max(int(product['stock_qty'] or 0)-int(product['reserved_stock_qty'] or 0),0)
+            reserve=0
+            if product['fulfillment_mode']=='ready_stock':
+                if quantity>available:
+                    flash(f"{product['name']}: há somente {available} unidade(s) disponível(is) para pronta entrega.",'warning')
+                    return redirect(url_for('portal.request_quote',product=product_id)+'#catalogo')
+                reserve=quantity
+            elif product['fulfillment_mode']=='both':
+                reserve=min(quantity,available)
+            if reserve:
+                cur.execute('UPDATE products SET reserved_stock_qty=reserved_stock_qty+%s WHERE id=%s',(reserve,product_id))
+            c.commit()
+            g.legacy_stock_reservation={'product_id':int(product_id),'qty':reserve,'requested_qty':quantity}
+    except Exception:
+        c.rollback();raise
+    finally:c.close()
+    return None
+
+
+@operations_bp.after_app_request
+def finalize_public_catalog_tracking(response):
+    if request.path != '/request-quote' or request.method != 'POST':
+        return response
+    reservation=getattr(g,'legacy_stock_reservation',None)
+    meta=getattr(g,'legacy_order_meta',None) or session.get('_legacy_order_source') or {}
+    location=response.headers.get('Location','')
+    success=response.status_code in (301,302,303,307,308) and '/request/' in location and '/request-quote' not in location
+    if success:
+        token=location.split('/request/',1)[1].split('?',1)[0].split('#',1)[0]
+        c=db()
+        try:
+            with c.cursor() as cur:
+                cur.execute('''UPDATE customer_requests SET source=%s,utm_source=%s,utm_medium=%s,utm_campaign=%s,
+                               reserved_stock_qty=%s WHERE public_token=%s RETURNING id''',
+                            (meta.get('source') or 'catalog',meta.get('utm_source') or None,meta.get('utm_medium') or None,
+                             meta.get('utm_campaign') or None,(reservation or {}).get('qty',0),token))
+                row=cur.fetchone()
+                if row:
+                    details=f"Origem: {meta.get('source') or 'catalog'}"
+                    if reservation:
+                        details+=f"; estoque pronto reservado: {reservation['qty']} de {reservation['requested_qty']}"
+                    cur.execute("INSERT INTO order_events(request_id,event_type,details) VALUES(%s,'request_received',%s)",(row['id'],details))
+            c.commit()
+        except Exception:
+            c.rollback();raise
+        finally:c.close()
+    elif reservation and reservation.get('qty'):
+        c=db()
+        try:
+            with c.cursor() as cur:
+                cur.execute('UPDATE products SET reserved_stock_qty=GREATEST(0,reserved_stock_qty-%s) WHERE id=%s',(reservation['qty'],reservation['product_id']))
+            c.commit()
+        finally:c.close()
+    return response
 
 
 @operations_bp.get('/orders')
@@ -61,7 +154,7 @@ def order_detail(request_id):
     try:
         with c.cursor() as cur:
             cur.execute('''
-                SELECT r.*, p.name AS product_name, p.sku, p.fulfillment_mode, p.stock_qty,
+                SELECT r.*, p.name AS product_name, p.sku, p.fulfillment_mode, p.stock_qty,p.reserved_stock_qty AS product_reserved_stock_qty,
                        q.quote_number, q.status AS quote_status, q.total AS quote_total,
                        q.filament_id, q.estimated_grams, q.actual_grams,
                        cu.id AS linked_customer_id, cu.name AS linked_customer_name
@@ -97,7 +190,7 @@ def stock_production():
     c=db()
     try:
         with c.cursor() as cur:
-            cur.execute('''SELECT p.id,p.sku,p.name,p.stock_qty,p.stock_min_qty,p.grams_per_unit,
+            cur.execute('''SELECT p.id,p.sku,p.name,p.stock_qty,p.reserved_stock_qty,p.stock_min_qty,p.grams_per_unit,
                                   p.filament_id,p.fulfillment_mode,f.material,f.color
                            FROM products p LEFT JOIN filaments f ON f.id=p.filament_id
                            WHERE p.active=TRUE ORDER BY p.name''')
