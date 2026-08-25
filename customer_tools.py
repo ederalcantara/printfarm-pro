@@ -1,4 +1,5 @@
 import os
+import re
 from functools import wraps
 from urllib.parse import quote as urlquote
 
@@ -13,12 +14,33 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 
 
 def db():return psycopg2.connect(DATABASE_URL,cursor_factory=RealDictCursor)
+def norm_phone(value):return re.sub(r'\D','',value or '')
 def login_required(view):
     @wraps(view)
     def wrapped(*args,**kwargs):
         if not session.get('user_id'):return redirect(url_for('login'))
         return view(*args,**kwargs)
     return wrapped
+
+@customer_tools_bp.before_app_request
+def prevent_duplicate_manual_customer():
+    if request.path!='/customers/add' or request.method!='POST' or not session.get('user_id'):
+        return None
+    email=(request.form.get('email') or '').strip();phone=norm_phone(request.form.get('phone'))
+    if not email and not phone:return None
+    c=db()
+    try:
+        with c.cursor() as cur:
+            if email:
+                cur.execute("SELECT id,name FROM customers WHERE lower(trim(COALESCE(email,'')))=lower(trim(%s)) ORDER BY id LIMIT 1",(email,));existing=cur.fetchone()
+            else:existing=None
+            if not existing and phone:
+                cur.execute("SELECT id,name FROM customers WHERE regexp_replace(COALESCE(phone,''),'[^0-9]','','g')=%s ORDER BY id LIMIT 1",(phone,));existing=cur.fetchone()
+    finally:c.close()
+    if existing:
+        flash(f"Cliente já existe: {existing['name']}. O novo cadastro não foi criado.",'warning')
+        return redirect(url_for('customer_tools.customer_history',customer_id=existing['id']))
+    return None
 
 @customer_tools_bp.get('/customers/<int:customer_id>/history')
 @login_required
@@ -32,13 +54,28 @@ def customer_history(customer_id):
                            FROM quotes q LEFT JOIN quote_payments p ON p.quote_id=q.id LEFT JOIN order_business b ON b.quote_id=q.id
                            WHERE q.customer_id=%s ORDER BY q.created_at DESC''',(customer_id,));quotes=cur.fetchall()
             cur.execute("SELECT COUNT(*) AS orders,COALESCE(SUM(total),0) AS spent,MAX(created_at) AS last_order FROM quotes WHERE customer_id=%s AND status NOT IN ('canceled')",(customer_id,));stats=cur.fetchone()
-            cur.execute('''SELECT DISTINCT qi.description FROM quote_items qi JOIN quotes q ON q.id=qi.quote_id
-                           WHERE q.customer_id=%s ORDER BY qi.description LIMIT 20''',(customer_id,));products=cur.fetchall()
+            cur.execute('''SELECT DISTINCT COALESCE(p.name,qi.description) AS product_name
+                           FROM quote_items qi JOIN quotes q ON q.id=qi.quote_id LEFT JOIN products p ON p.id=qi.product_id
+                           WHERE q.customer_id=%s ORDER BY product_name LIMIT 20''',(customer_id,));products=cur.fetchall()
     finally:c.close()
     phone=''.join(ch for ch in (customer['phone'] or '') if ch.isdigit())
     followup=f"Olá {customer['name']}! Aqui é a Legacy 3D Studio. Obrigado por escolher nosso trabalho. Como ficou sua experiência com o pedido? Se puder, envie uma avaliação ou uma foto da peça em uso. Será um prazer atender você novamente!"
     followup_url='https://wa.me/'+phone+'?text='+urlquote(followup) if phone else None
     return render_template('customer_history.html',customer=customer,quotes=quotes,stats=stats,products=products,followup=followup,followup_url=followup_url)
+
+@customer_tools_bp.post('/customers/<int:customer_id>/profile')
+@login_required
+def update_customer_profile(customer_id):
+    c=db()
+    try:
+        with c.cursor() as cur:
+            cur.execute('''UPDATE customers SET tags=%s,birthday=%s,source=%s WHERE id=%s''',
+                        (request.form.get('tags') or None,request.form.get('birthday') or None,request.form.get('source') or None,customer_id))
+            cur.execute("INSERT INTO audit_log(entity_type,entity_id,action,details,user_id) VALUES('customer',%s,'profile_updated',%s,%s)",(customer_id,'Tags/aniversário/origem atualizados',session.get('user_id')))
+        c.commit()
+    finally:c.close()
+    flash('Perfil comercial do cliente atualizado.','success')
+    return redirect(url_for('customer_tools.customer_history',customer_id=customer_id))
 
 @customer_tools_bp.get('/customers/deduplicate')
 @login_required
@@ -46,12 +83,14 @@ def deduplicate_customers():
     c=db()
     try:
         with c.cursor() as cur:
-            cur.execute('''SELECT array_agg(id ORDER BY id) AS ids,array_agg(name ORDER BY id) AS names,
-                                  max(email) AS email,max(phone) AS phone,count(*) AS n
-                           FROM customers
-                           GROUP BY COALESCE(NULLIF(lower(trim(email)),''),NULLIF(regexp_replace(COALESCE(phone,''),'[^0-9]','','g'),''))
-                           HAVING count(*)>1 AND COALESCE(NULLIF(lower(trim(max(email))),''),NULLIF(regexp_replace(COALESCE(max(phone),''),'[^0-9]','','g'),'')) IS NOT NULL
-                           ORDER BY count(*) DESC''');groups=cur.fetchall()
+            cur.execute('''WITH candidates AS (
+                SELECT lower(trim(email)) AS key,'email' AS kind,array_agg(id ORDER BY id) AS ids,array_agg(name ORDER BY id) AS names,max(email) AS email,max(phone) AS phone,count(*) AS n
+                FROM customers WHERE NULLIF(trim(email),'') IS NOT NULL GROUP BY lower(trim(email)) HAVING count(*)>1
+                UNION ALL
+                SELECT regexp_replace(phone,'[^0-9]','','g') AS key,'phone' AS kind,array_agg(id ORDER BY id),array_agg(name ORDER BY id),max(email),max(phone),count(*)
+                FROM customers WHERE NULLIF(regexp_replace(COALESCE(phone,''),'[^0-9]','','g'),'') IS NOT NULL
+                GROUP BY regexp_replace(phone,'[^0-9]','','g') HAVING count(*)>1
+            ) SELECT * FROM candidates ORDER BY n DESC,kind,key''');groups=cur.fetchall()
     finally:c.close()
     return render_template('customer_dedupe.html',groups=groups)
 
@@ -71,8 +110,10 @@ def merge_customers():
             cur.execute('UPDATE projects SET customer_id=%s WHERE customer_id=%s',(keep_id,duplicate_id))
             cur.execute('UPDATE customer_requests SET customer_id=%s WHERE customer_id=%s',(keep_id,duplicate_id))
             cur.execute('''UPDATE customers k SET phone=COALESCE(NULLIF(k.phone,''),d.phone),email=COALESCE(NULLIF(k.email,''),d.email),
-                           address=COALESCE(NULLIF(k.address,''),d.address),notes=concat_ws(E'\n',NULLIF(k.notes,''),NULLIF(d.notes,''))
+                           address=COALESCE(NULLIF(k.address,''),d.address),notes=concat_ws(E'\n',NULLIF(k.notes,''),NULLIF(d.notes,'')),
+                           tags=COALESCE(NULLIF(k.tags,''),d.tags),birthday=COALESCE(k.birthday,d.birthday),source=COALESCE(NULLIF(k.source,''),d.source)
                            FROM customers d WHERE k.id=%s AND d.id=%s''',(keep_id,duplicate_id))
+            cur.execute("INSERT INTO audit_log(entity_type,entity_id,action,details,user_id) VALUES('customer',%s,'duplicates_merged',%s,%s)",(keep_id,f'Cadastro {duplicate_id} incorporado',session.get('user_id')))
             cur.execute('DELETE FROM customers WHERE id=%s',(duplicate_id,))
         c.commit()
     except Exception:c.rollback();raise
@@ -93,6 +134,7 @@ def repeat_quote(quote_id):
                            VALUES(%s,%s,%s,%s,'draft',%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id''',(number,old['customer_id'],old['title'],old['project_type'],old['currency'],old['subtotal'],old['discount'],old['total'],old['filament_id'],old['estimated_grams'],old['print_hours'],'Pedido repetido a partir de '+old['quote_number']));new_id=cur.fetchone()['id']
             if item:cur.execute('INSERT INTO quote_items(quote_id,description,quantity,unit_price,product_id) VALUES(%s,%s,%s,%s,%s)',(new_id,item['description'],item['quantity'],item['unit_price'],item.get('product_id')))
             cur.execute("INSERT INTO projects(quote_id,customer_id,project_type,name,status,description) VALUES(%s,%s,%s,%s,'development',%s)",(new_id,old['customer_id'],old['project_type'],old['title'],'Pedido repetido a partir de '+old['quote_number']))
+            cur.execute("INSERT INTO audit_log(entity_type,entity_id,action,details,user_id) VALUES('quote',%s,'repeated',%s,%s)",(new_id,f'Copiado de {old["quote_number"]}',session.get('user_id')))
         c.commit()
     except Exception:c.rollback();raise
     finally:c.close()
