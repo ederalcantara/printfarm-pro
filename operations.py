@@ -196,13 +196,14 @@ def source_report():
     try:
         with c.cursor() as cur:
             cur.execute('''SELECT COALESCE(NULLIF(r.source,''),'unknown') AS source,
+                                  COALESCE(q.currency,r.currency,'N/A') AS currency,
                                   COUNT(*) AS requests,
                                   COUNT(r.quote_id) AS converted,
                                   COALESCE(SUM(CASE WHEN q.status <> 'canceled' THEN q.total ELSE 0 END),0) AS revenue
                            FROM customer_requests r
                            LEFT JOIN quotes q ON q.id=r.quote_id
-                           GROUP BY COALESCE(NULLIF(r.source,''),'unknown')
-                           ORDER BY revenue DESC,requests DESC''')
+                           GROUP BY COALESCE(NULLIF(r.source,''),'unknown'),COALESCE(q.currency,r.currency,'N/A')
+                           ORDER BY source,currency''')
             rows=cur.fetchall()
     finally:c.close()
     return render_template('source_report.html',rows=rows)
