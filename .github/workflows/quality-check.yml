@@ -60,6 +60,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://legacy:legacy@localhost:5432/legacy_test
       SECRET_KEY: integration-test-secret
+      PYTHONPATH: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
